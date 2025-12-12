@@ -143,15 +143,34 @@ def generate_image(scene: str, idx: int) -> Path:
     out = IMAGES_DIR / f"scene_{idx:02d}.jpg"
     print(f"[image] Generating image {idx+1}/{NUM_IMAGES}: {scene[:50]}...")
     
-    # Retry logic with exponential backoff
+    
+    # Retry logic with exponential backoff (longer waits for rate limits)
     max_retries = 5
     for attempt in range(max_retries):
         try:
             r = requests.get(url, timeout=180)
             r.raise_for_status()
             out.write_bytes(r.content)
-            time.sleep(3)  # Delay between requests
+            time.sleep(2)  # Small delay between successful requests
             return out
+        except requests.exceptions.HTTPError as e:
+            # Handle 429 rate limits with much longer waits
+            if e.response.status_code == 429:
+                wait_time = (attempt + 1) * 20  # 20, 40, 60, 80, 100 seconds
+                if attempt < max_retries - 1:
+                    print(f"[image] Rate limited! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[image] Failed to generate image {idx+1}: Rate limit exceeded")
+                    raise e
+            else:
+                wait_time = (attempt + 1) * 5
+                if attempt < max_retries - 1:
+                    print(f"[image] HTTP {e.response.status_code}. Retry {attempt+1}/{max_retries} (waiting {wait_time}s)")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[image] Failed to generate image {idx+1}: {e}")
+                    raise e
         except Exception as e:
             wait_time = (attempt + 1) * 5
             if attempt < max_retries - 1:
@@ -163,22 +182,9 @@ def generate_image(scene: str, idx: int) -> Path:
     return out
 
 def generate_images(scenes: list):
-    """Generate unique images for each scene IN PARALLEL (4-5x faster!)"""
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    
-    print(f"[image] Generating {NUM_IMAGES} images in parallel...")
-    image_paths = [None] * NUM_IMAGES
-    
-    # Generate 4 images at a time
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        future_to_idx = {executor.submit(generate_image, scene, i): i for i, scene in enumerate(scenes)}
-        
-        for future in as_completed(future_to_idx):
-            idx = future_to_idx[future]
-            image_paths[idx] = future.result()
-            print(f"[image] ✅ {idx+1}/{NUM_IMAGES} complete")
-    
-    return image_paths
+    """Generate unique images for each scene SEQUENTIALLY (avoids rate limits)"""
+    print(f"[image] Generating {NUM_IMAGES} images sequentially (avoiding rate limits)...")
+    return [generate_image(scene, i) for i, scene in enumerate(scenes)]
 
 def generate_tts(story: str):
     """Generate narration using edge-tts (free Microsoft TTS)."""
