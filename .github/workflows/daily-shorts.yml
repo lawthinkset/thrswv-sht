@@ -24,17 +24,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y ffmpeg
 
-    - name: Cache TTS Models
+    - name: Cache Vosk Model
       uses: actions/cache@v3
       with:
-        path: ~/.local/share/tts
-        key: tts-models-${{ runner.os }}
-
-    - name: Cache Whisper Models
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/whisper
-        key: whisper-models-${{ runner.os }}
+        path: vosk-model-small-ru-0.22
+        key: vosk-ru-model-${{ runner.os }}
 
     - name: Install dependencies
       run: |
