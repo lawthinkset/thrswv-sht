@@ -6,7 +6,6 @@ import random
 from pathlib import Path
 from urllib.parse import quote
 import requests
-import whisper
 import time
 
 # ---------------- CONFIG ----------------
