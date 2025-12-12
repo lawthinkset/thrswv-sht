@@ -15,8 +15,8 @@ Run this script ONCE per YouTube channel you want to upload to.
 from google_auth_oauthlib.flow import InstalledAppFlow
 import json
 
-# YouTube upload scope
-SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+# YouTube full scope (includes upload + read channel info)
+SCOPES = ["https://www.googleapis.com/auth/youtube"]
 
 def main():
     print("=" * 70)
