@@ -15,7 +15,7 @@ from pathlib import Path
 import datetime
 
 # Import platform-specific uploaders
-from upload_youtube import upload_to_youtube
+from upload_to_youtube import upload_to_youtube
 from upload_instagram import upload_to_instagram
 from upload_tiktok import upload_to_tiktok
 from upload_facebook import upload_to_facebook
