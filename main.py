@@ -204,49 +204,111 @@ def generate_word_subtitles():
                     "end": word_info["end"]
                 })
     
-    # Generate ASS subtitle file
-    ass_content = generate_ass_subtitles(words)
-    with open(SUBS_FILE, "w", encoding="utf-8") as f:
-        f.write(ass_content)
+    # Generate subtitles (get duration from narration file)
+    # The original code had an incomplete call to generate_ass_subtitles(words)
+    # This section is replaced to call the existing generate_subtitles function
+    # with the story and calculated duration.
     
-    print(f"[subs] Word-level UPPERCASE subtitles saved ({len(words)} words)")
+    # Get duration from narration file
+    duration = get_audio_duration(NARRATION_FILE)
+    
+    # Call the existing generate_subtitles function
+    generate_subtitles(story, duration)
 
-def generate_ass_subtitles(words):
-    """Generate ASS format subtitles with UPPERCASE words, centered, large font."""
-    # ASS header with styling - large bold font, centered
-    ass_header = """[Script Info]
-Title: YouTube Shorts Subtitles
+def generate_subtitles(story, duration):
+    """Generate WORD-BY-WORD subtitles using Vosk (lightweight!)."""
+    print("[subs] Generating word-level Russian subtitles with Vosk...")
+    
+    import json
+    import wave
+    from vosk import Model, KaldiRecognizer
+    import os
+    
+    # Download Vosk model if not exists
+    model_path = "vosk-model-small-ru-0.22"
+    if not os.path.exists(model_path):
+        print("[subs] Downloading Vosk Russian model (~50 MB)...")
+        import urllib.request
+        import zipfile
+        
+        url = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
+        zip_path = "vosk-model.zip"
+        
+        urllib.request.urlretrieve(url, zip_path)
+        
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(".")
+        
+        os.remove(zip_path)
+        print("[subs] Model downloaded!")
+    
+    # Convert MP3 to WAV for Vosk
+    wav_file = "output/narration.wav"
+    os.system(f'ffmpeg -y -i {NARRATION_FILE} -ar 16000 -ac 1 {wav_file}')
+    
+    # Load Vosk model
+    model = Model(model_path)
+    
+    # Open WAV file
+    wf = wave.open(wav_file, "rb")
+    rec = KaldiRecognizer(model, wf.getframerate())
+    rec.SetWords(True)  # Enable word-level timestamps
+    
+    # Process audio
+    words = []
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if rec.AcceptWaveform(data):
+            result = json.loads(rec.Result())
+            if 'result' in result:
+                for word_info in result['result']:
+                    words.append({
+                        'word': word_info['word'].upper(),
+                        'start': word_info['start'],
+                        'end': word_info['end']
+                    })
+    
+    # Final result
+    final_result = json.loads(rec.FinalResult())
+    if 'result' in final_result:
+        for word_info in final_result['result']:
+            words.append({
+                'word': word_info['word'].upper(),
+                'start': word_info['start'],
+                'end': word_info['end']
+            })
+    
+    # Create ASS subtitle file
+    ass_content = """[Script Info]
+Title: Russian Story
 ScriptType: v4.00+
-WrapStyle: 0
-ScaledBorderAndShadow: yes
-YCbCr Matrix: None
-PlayResX: 1080
-PlayResY: 1920
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial Black,100,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5,3,5,50,50,400,1
+Style: Default,Arial Black,100,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,5,10,10,80,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     
-    events = []
     for word in words:
-        start = format_ass_time(word["start"])
-        end = format_ass_time(word["end"])
-        text = word["word"].replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
-        events.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
+        start = word['start']
+        end = word['end']
+        text = word['word']
+        
+        start_time = f"{int(start//3600)}:{int((start%3600)//60):02d}:{start%60:.2f}"
+        end_time = f"{int(end//3600)}:{int((end%3600)//60):02d}:{end%60:.2f}"
+        
+        ass_content += f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n"
     
-    return ass_header + "\n".join(events)
-
-def format_ass_time(seconds):
-    """Convert seconds to ASS time format (H:MM:SS.cc)."""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    centisecs = int((seconds % 1) * 100)
-    return f"{hours}:{minutes:02d}:{secs:02d}.{centisecs:02d}"
+    # Save ASS file
+    with open(SUBS_FILE, "w", encoding="utf-8") as f:
+        f.write(ass_content)
+    
+    print(f"[subs] WORD-BY-WORD subtitles saved ({len(words)} words)")
+    return SUBS_FILE
 
 def get_audio_duration(audio_file):
     """Get duration of audio file using ffprobe."""
