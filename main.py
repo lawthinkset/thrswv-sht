@@ -187,34 +187,6 @@ def generate_tts(story: str):
     print(f"[tts] Narration saved to {NARRATION_FILE}")
 
 def generate_word_subtitles():
-    """Generate word-level UPPERCASE subtitles using Whisper."""
-    print("[subs] Transcribing with Whisper for word-level timestamps...")
-    model = whisper.load_model(WHISPER_MODEL_NAME)
-    result = model.transcribe(str(NARRATION_FILE), word_timestamps=True)
-    
-    # Extract word-level timestamps
-    words = []
-    for segment in result["segments"]:
-        if "words" in segment:
-            for word_info in segment["words"]:
-                words.append({
-                    "word": word_info["word"].strip().upper(),  # UPPERCASE
-                    "start": word_info["start"],
-                    "end": word_info["end"]
-                })
-    
-    # Generate subtitles (get duration from narration file)
-    # The original code had an incomplete call to generate_ass_subtitles(words)
-    # This section is replaced to call the existing generate_subtitles function
-    # with the story and calculated duration.
-    
-    # Get duration from narration file
-    duration = get_audio_duration(NARRATION_FILE)
-    
-    # Call the existing generate_subtitles function
-    generate_subtitles(story, duration)
-
-def generate_subtitles(story, duration):
     """Generate WORD-BY-WORD subtitles using Vosk (lightweight!)."""
     print("[subs] Generating word-level Russian subtitles with Vosk...")
     
@@ -307,7 +279,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         f.write(ass_content)
     
     print(f"[subs] WORD-BY-WORD subtitles saved ({len(words)} words)")
-    return SUBS_FILE
 
 def get_audio_duration(audio_file):
     """Get duration of audio file using ffprobe."""
