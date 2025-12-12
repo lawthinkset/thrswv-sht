@@ -1,0 +1,75 @@
+name: Daily Auto Shorts with YouTube Upload
+
+on:
+  schedule:
+    - cron: "30 15 * * *"     # 9:00 PM India time (3:30 PM UTC)
+  workflow_dispatch:
+
+jobs:
+  generate-and-upload:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+        cache: 'pip'
+
+    - name: Install FFmpeg
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ffmpeg
+
+    - name: Cache TTS Models
+      uses: actions/cache@v3
+      with:
+        path: ~/.local/share/tts
+        key: tts-models-${{ runner.os }}
+
+    - name: Cache Whisper Models
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/whisper
+        key: whisper-models-${{ runner.os }}
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Check and generate topics if needed
+      run: |
+        python generate_topics.py
+
+    - name: Generate daily short video
+      run: |
+        python main.py
+
+    - name: Upload to all platforms
+      env:
+        # YouTube
+        YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+        YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+        YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        # Instagram (optional)
+        IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        # TikTok (optional)
+        TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
+        # Facebook (optional)
+        FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
+        FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+      run: |
+        python upload_all_platforms.py
+
+    - name: Upload video artifact (backup)
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: final-video-${{ github.run_number }}
+        path: output/final_video.mp4
+        retention-days: 7
