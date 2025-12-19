@@ -19,6 +19,8 @@ from upload_to_youtube import upload_to_youtube
 from upload_instagram import upload_to_instagram
 from upload_tiktok import upload_to_tiktok
 from upload_facebook import upload_to_facebook
+from upload_threads import upload_to_threads
+from upload_twitter import upload_to_twitter
 
 def main():
     """Upload video to all configured platforms."""
@@ -41,10 +43,11 @@ def main():
     # Russian description
     description = f"""Интересный факт из истории древних женщин.
 
-Знаете ли вы, что роль женщин в древности была куда разнообразнее, 
-чем кажется? Откройте для себя неожиданный факт, 
-который заставит вас переосмыслить историю цивилизаций.
-
+Создано с помощью ИИ:
+• Генерация истории (Pollinations AI)
+• Генерация изображений (Flux)
+• Озвучка (TTS)
+• Автоматическое производство видео
 
 #Shorts #ИсторияЖенщин #ДревняяИстория #ИИ"""
     
@@ -125,6 +128,76 @@ def main():
     else:
         print("⏭️  Skipping Facebook (credentials not set)")
     
+    # Upload to Threads
+    if all([
+        os.getenv('THREADS_ACCESS_TOKEN'),
+        os.getenv('THREADS_USER_ID')
+    ]):
+        print("\n" + "="*60)
+        print("🧵 Uploading to Threads...")
+        print("="*60)
+        try:
+            result = upload_to_threads(video_file, description)
+            results['threads'] = result
+            print(f"✅ Threads: Uploaded successfully")
+        except Exception as e:
+            print(f"❌ Threads failed: {e}")
+            results['threads'] = None
+    else:
+        print("⏭️  Skipping Threads (credentials not set)")
+    
+    # Upload to Twitter/X
+    print("\n" + "="*60)
+    print("🐦 Checking Twitter/X credentials...")
+    print("="*60)
+    
+    twitter_api_key = os.getenv('TWITTER_API_KEY')
+    twitter_api_secret = os.getenv('TWITTER_API_SECRET')
+    twitter_access_token = os.getenv('TWITTER_ACCESS_TOKEN')
+    twitter_access_secret = os.getenv('TWITTER_ACCESS_SECRET')
+    
+    # Debug: Show which credentials are set
+    print(f"[twitter] API Key: {'✅ Set' if twitter_api_key else '❌ Not set'}")
+    print(f"[twitter] API Secret: {'✅ Set' if twitter_api_secret else '❌ Not set'}")
+    print(f"[twitter] Access Token: {'✅ Set' if twitter_access_token else '❌ Not set'}")
+    print(f"[twitter] Access Secret: {'✅ Set' if twitter_access_secret else '❌ Not set'}")
+    
+    if all([twitter_api_key, twitter_api_secret, twitter_access_token, twitter_access_secret]):
+        print(f"[twitter] ✅ All credentials present!")
+        print(f"[twitter] 🚀 Starting upload...")
+        try:
+            result = upload_to_twitter(video_file, description)
+            results['twitter'] = result
+            print(f"\n✅ Twitter: Upload successful!")
+            print(f"   Tweet ID: {result.get('id', 'N/A')}")
+            print(f"   URL: {result.get('url', 'N/A')}")
+        except Exception as e:
+            print(f"\n❌ Twitter upload FAILED!")
+            print(f"   Error type: {type(e).__name__}")
+            print(f"   Error message: {str(e)}")
+            print(f"   Full error: {repr(e)}")
+            
+            # Show troubleshooting tips
+            print(f"\n🔍 Troubleshooting:")
+            print(f"   - Check if Twitter credentials are correct in GitHub Secrets")
+            print(f"   - Verify Twitter app has 'Read and Write' permissions")
+            print(f"   - Check if Access Token was regenerated after permission change")
+            print(f"   - Verify video file exists and is valid")
+            
+            results['twitter'] = None
+    else:
+        print(f"[twitter] ⏭️  Skipping Twitter (credentials not set)")
+        print(f"[twitter] Missing credentials - add to GitHub Secrets:")
+        if not twitter_api_key:
+            print(f"   - TWITTER_API_KEY")
+        if not twitter_api_secret:
+            print(f"   - TWITTER_API_SECRET")
+        if not twitter_access_token:
+            print(f"   - TWITTER_ACCESS_TOKEN")
+        if not twitter_access_secret:
+            print(f"   - TWITTER_ACCESS_SECRET")
+        results['twitter'] = None
+    
     # Summary
     print("\n" + "="*60)
     print("📊 Upload Summary")
@@ -136,4 +209,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
