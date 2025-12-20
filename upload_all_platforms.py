@@ -129,22 +129,38 @@ def main():
         print("⏭️  Skipping Facebook (credentials not set)")
     
     # Upload to Threads
-    if all([
-        os.getenv('THREADS_ACCESS_TOKEN'),
-        os.getenv('THREADS_USER_ID')
-    ]):
-        print("\n" + "="*60)
-        print("🧵 Uploading to Threads...")
-        print("="*60)
+    print("\n" + "="*60)
+    print("🧵 Checking Threads credentials...")
+    print("="*60)
+    
+    threads_token = os.getenv('THREADS_ACCESS_TOKEN')
+    threads_user_id = os.getenv('THREADS_USER_ID')
+    
+    # Debug: Show which credentials are set
+    print(f"[threads] Access Token: {'✅ Set' if threads_token else '❌ Not set'}")
+    print(f"[threads] User ID: {'✅ Set' if threads_user_id else '❌ Not set'}")
+    
+    if threads_token and threads_user_id:
+        print(f"[threads] ✅ All credentials present!")
+        print(f"[threads] 🚀 Starting upload...")
         try:
             result = upload_to_threads(video_file, description)
             results['threads'] = result
-            print(f"✅ Threads: Uploaded successfully")
+            print(f"\n✅ Threads: Upload successful!")
+            print(f"   Thread ID: {result.get('id', 'N/A')}")
         except Exception as e:
-            print(f"❌ Threads failed: {e}")
+            print(f"\n❌ Threads upload FAILED!")
+            print(f"   Error type: {type(e).__name__}")
+            print(f"   Error message: {str(e)}")
             results['threads'] = None
     else:
-        print("⏭️  Skipping Threads (credentials not set)")
+        print(f"[threads] ⏭️  Skipping Threads (credentials not set)")
+        print(f"[threads] Missing credentials - add to GitHub Secrets:")
+        if not threads_token:
+            print(f"   - THREADS_ACCESS_TOKEN")
+        if not threads_user_id:
+            print(f"   - THREADS_USER_ID")
+        results['threads'] = None
     
     # Upload to Twitter/X
     print("\n" + "="*60)
