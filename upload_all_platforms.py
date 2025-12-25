@@ -21,6 +21,7 @@ from upload_tiktok import upload_to_tiktok
 from upload_facebook import upload_to_facebook
 from upload_threads import upload_to_threads
 from upload_twitter import upload_to_twitter
+from upload_vk import upload_to_vk
 
 def main():
     """Upload video to all configured platforms."""
@@ -41,15 +42,10 @@ def main():
         title = f"История древних женщин - {datetime.date.today()}"
     
     # Russian description
+    # Russian description
     description = f"""Интересный факт из истории древних женщин.
 
-Создано с помощью ИИ:
-• Генерация истории (Pollinations AI)
-• Генерация изображений (Flux)
-• Озвучка (TTS)
-• Автоматическое производство видео
-
-#Shorts #ИсторияЖенщин #ДревняяИстория #ИИ"""
+#Shorts #ИсторияЖенщин #ДревняяИстория"""
     
     tags = [
         'История', 'Древние женщины', 'Исторические факты',
@@ -214,6 +210,30 @@ def main():
             print(f"   - TWITTER_ACCESS_SECRET")
         results['twitter'] = None
     
+    # Upload to VK
+    print("\n" + "="*60)
+    print("vk Checking VK credentials...")
+    print("="*60)
+    
+    vk_token = os.getenv('VK_ACCESS_TOKEN')
+    
+    # Debug: Show which credentials are set
+    print(f"[vk] Access Token: {'✅ Set' if vk_token else '❌ Not set'}")
+    
+    if vk_token:
+        print(f"[vk] ✅ Credentials present!")
+        print(f"[vk] 🚀 Starting upload...")
+        try:
+            result = upload_to_vk(video_file, description, title)
+            results['vk'] = result
+        except Exception as e:
+            print(f"\n❌ VK upload FAILED!")
+            print(f"   Error: {str(e)}")
+            results['vk'] = None
+    else:
+        print(f"[vk] ⏭️  Skipping VK (credentials not set)")
+        results['vk'] = None
+
     # Summary
     print("\n" + "="*60)
     print("📊 Upload Summary")
