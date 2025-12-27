@@ -9,7 +9,7 @@ import os
 import requests
 from pathlib import Path
 
-def upload_to_facebook(video_file, description):
+def upload_to_facebook(video_path, description):
     """
     Upload video to Facebook Page.
     
@@ -20,7 +20,7 @@ def upload_to_facebook(video_file, description):
     print("📘 FACEBOOK UPLOAD STARTING")
     print("=" * 60)
     
-    # Check credentials
+    # Get credentials
     access_token = os.getenv('FB_ACCESS_TOKEN')
     page_id = os.getenv('FB_PAGE_ID')
     
@@ -39,23 +39,23 @@ def upload_to_facebook(video_file, description):
     print(f"[facebook] Token: {access_token[:20]}...")
     
     # Check video file
-    video_path = Path(video_file)
-    if not video_path.exists():
-        error_msg = f"❌ Video file not found: {video_file}"
+    video_path_obj = Path(video_path)
+    if not video_path_obj.exists():
+        error_msg = f"❌ Video file not found: {video_path}"
         print(f"[facebook] {error_msg}")
         raise FileNotFoundError(error_msg)
     
-    file_size_mb = video_path.stat().st_size / (1024 * 1024)
-    print(f"[facebook] ✅ Video file found: {video_file}")
+    file_size_mb = video_path_obj.stat().st_size / (1024 * 1024)
+    print(f"[facebook] ✅ Video file found: {video_path}")
     print(f"[facebook] Video size: {file_size_mb:.2f} MB")
     
     # Upload video
     print(f"[facebook] 🚀 Uploading to Facebook Page...")
-    url = f"https://graph.facebook.com/v24.0/{page_id}/videos"
+    url = f"https://graph.facebook.com/v18.0/{page_id}/videos"
     
     try:
-        with open(video_file, 'rb') as f:
-            files = {'file': f}
+        with open(video_path, 'rb') as video:
+            files = {'file': video}
             data = {
                 'access_token': access_token,
                 'description': description[:500],  # Limit description length
@@ -93,6 +93,13 @@ def upload_to_facebook(video_file, description):
                 print(f"[facebook] Error Code: {error_code}")
                 print(f"[facebook] Error Message: {error_msg}")
                 print(f"[facebook] Full Response: {response.text[:500]}")
+                
+                # Provide helpful error messages
+                if error_code == 190:
+                    print(f"[facebook] 💡 Token expired or invalidated!")
+                    print(f"[facebook] 💡 Solution: Generate a new access token")
+                    print(f"[facebook] 💡 Go to: https://developers.facebook.com/tools/explorer/")
+                
                 print("=" * 60)
                 
                 raise Exception(f"Facebook API Error {response.status_code}: {error_msg}")
