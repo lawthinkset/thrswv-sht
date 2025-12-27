@@ -52,7 +52,7 @@ def choose_topic_for_today():
     return topics[today.toordinal() % len(topics)]
 
 def generate_story_with_pollinations(topic: str) -> str:
-    """Generate a short Russian story about ancient women's history."""
+    """Generate a short Russian story about ancient women's history with retry logic."""
     base_url = "https://text.pollinations.ai/"
     system = (
         "Ты историк, специализирующийся на истории женщин в древних цивилизациях. "
@@ -66,19 +66,68 @@ def generate_story_with_pollinations(topic: str) -> str:
     params = {"model": "openai", "temperature": 1.0, "system": system}
 
     print(f"[story] Generating Russian story for topic: {topic}")
-    r = requests.get(url, params=params, timeout=60)
-    r.raise_for_status()
-    text = r.text.strip()
+    
+    # Retry logic with long delays for server issues
+    max_retries = 3
+    retry_delays = [600, 1200, 1800]  # 10 min, 20 min, 30 min
+    
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"[story] Attempt {attempt+1}/{max_retries}...")
+            r = requests.get(url, params=params, timeout=120)
+            r.raise_for_status()
+            text = r.text.strip()
+            
+            # Validate response
+            if not text or len(text) < 50:
+                raise ValueError("Story too short or empty")
+            
+            words = text.split()
+            if len(words) > STORY_MAX_WORDS:
+                text = " ".join(words[:STORY_MAX_WORDS])
 
-    words = text.split()
-    if len(words) > STORY_MAX_WORDS:
-        text = " ".join(words[:STORY_MAX_WORDS])
+            with open(STORY_FILE, "w", encoding="utf-8") as f:
+                f.write(text)
 
-    with open(STORY_FILE, "w", encoding="utf-8") as f:
-        f.write(text)
-
-    print(f"[story] Russian story generated ({len(text.split())} words)")
-    return text
+            print(f"[story] ✅ Russian story generated ({len(text.split())} words)")
+            return text
+            
+        except requests.exceptions.Timeout as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = retry_delays[attempt]
+                print(f"[story] ⏱️ Timeout! Retry {attempt+2}/{max_retries} in {wait_time//60} minutes...")
+                print(f"[story] Waiting {wait_time} seconds...")
+                time.sleep(wait_time)
+            else:
+                print(f"[story] ❌ Failed after {max_retries} attempts (timeout)")
+                
+        except requests.exceptions.HTTPError as e:
+            last_error = e
+            status_code = e.response.status_code if e.response else "Unknown"
+            if attempt < max_retries - 1:
+                wait_time = retry_delays[attempt]
+                print(f"[story] ❌ HTTP {status_code} Error! Retry {attempt+2}/{max_retries} in {wait_time//60} minutes...")
+                print(f"[story] Pollinations AI server issue (502/503 errors are common). Waiting...")
+                time.sleep(wait_time)
+            else:
+                print(f"[story] ❌ Failed after {max_retries} attempts: HTTP {status_code}")
+                
+        except Exception as e:
+            last_error = e
+            if attempt < max_retries - 1:
+                wait_time = retry_delays[attempt]
+                print(f"[story] ❌ Error: {e}. Retry {attempt+2}/{max_retries} in {wait_time//60} minutes...")
+                time.sleep(wait_time)
+            else:
+                print(f"[story] ❌ Failed after {max_retries} attempts: {e}")
+    
+    # If we get here, all retries failed
+    error_msg = f"Story generation failed after {max_retries} attempts. Last error: {last_error}"
+    print(f"[story] {error_msg}")
+    raise Exception(error_msg)
 
 def generate_scene_descriptions(story: str) -> list:
     """Extract distinct scene descriptions from the story sentences."""
@@ -119,7 +168,7 @@ def generate_scene_descriptions(story: str) -> list:
     return unique_scenes
 
 def generate_image(scene: str, idx: int) -> Path:
-    """Generate a unique image for each scene using Pollinations AI."""
+    """Generate a unique image for each scene using Pollinations AI with robust retry logic."""
     # Create unique seed for each image based on scene content + index
     seed = hash(scene + str(idx)) % 1000000
     
@@ -143,43 +192,63 @@ def generate_image(scene: str, idx: int) -> Path:
     out = IMAGES_DIR / f"scene_{idx:02d}.jpg"
     print(f"[image] Generating image {idx+1}/{NUM_IMAGES}: {scene[:50]}...")
     
-    
-    # Retry logic with exponential backoff (longer waits for rate limits)
+    # Enhanced retry logic with longer delays
     max_retries = 5
+    retry_delays = [30, 60, 120, 180, 300]  # 30s, 1min, 2min, 3min, 5min
+    
     for attempt in range(max_retries):
         try:
             r = requests.get(url, timeout=180)
             r.raise_for_status()
+            
+            # Validate image data
+            if len(r.content) < 1000:  # Too small to be a valid image
+                raise ValueError("Image data too small, likely failed generation")
+            
             out.write_bytes(r.content)
-            time.sleep(2)  # Small delay between successful requests
+            print(f"[image] ✅ Image {idx+1} generated successfully")
+            time.sleep(3)  # Small delay between successful requests
             return out
-        except requests.exceptions.HTTPError as e:
-            # Handle 429 rate limits with much longer waits
-            if e.response.status_code == 429:
-                wait_time = (attempt + 1) * 20  # 20, 40, 60, 80, 100 seconds
-                if attempt < max_retries - 1:
-                    print(f"[image] Rate limited! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)")
-                    time.sleep(wait_time)
-                else:
-                    print(f"[image] Failed to generate image {idx+1}: Rate limit exceeded")
-                    raise e
-            else:
-                wait_time = (attempt + 1) * 5
-                if attempt < max_retries - 1:
-                    print(f"[image] HTTP {e.response.status_code}. Retry {attempt+1}/{max_retries} (waiting {wait_time}s)")
-                    time.sleep(wait_time)
-                else:
-                    print(f"[image] Failed to generate image {idx+1}: {e}")
-                    raise e
-        except Exception as e:
-            wait_time = (attempt + 1) * 5
+            
+        except requests.exceptions.Timeout:
             if attempt < max_retries - 1:
-                print(f"[image] Retry {attempt+1}/{max_retries} (waiting {wait_time}s)")
+                wait_time = retry_delays[attempt]
+                print(f"[image] ⏱️ Timeout! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
                 time.sleep(wait_time)
             else:
-                print(f"[image] Failed to generate image {idx+1}: {e}")
-                raise e
-    return out
+                print(f"[image] ❌ Failed to generate image {idx+1}: Timeout after {max_retries} attempts")
+                raise
+                
+        except requests.exceptions.HTTPError as e:
+            # Handle 429 rate limits with longer waits
+            if e.response.status_code == 429:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delays[attempt] * 2  # Double wait time for rate limits
+                    print(f"[image] 🚫 Rate limited! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
+                    print(f"[image] Pollinations AI is busy, please wait...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[image] ❌ Failed to generate image {idx+1}: Rate limit exceeded after {max_retries} attempts")
+                    raise
+            else:
+                if attempt < max_retries - 1:
+                    wait_time = retry_delays[attempt]
+                    print(f"[image] ❌ HTTP {e.response.status_code}! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[image] ❌ Failed to generate image {idx+1}: {e}")
+                    raise
+                    
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = retry_delays[attempt]
+                print(f"[image] ❌ Error: {e}. Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
+                time.sleep(wait_time)
+            else:
+                print(f"[image] ❌ Failed to generate image {idx+1} after {max_retries} attempts: {e}")
+                raise
+    
+    raise Exception(f"Image {idx+1} generation failed after all retries")
 
 def generate_images(scenes: list):
     """Generate unique images for each scene SEQUENTIALLY (avoids rate limits)"""
