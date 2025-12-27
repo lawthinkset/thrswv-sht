@@ -212,26 +212,36 @@ def main():
     
     # Upload to VK
     print("\n" + "="*60)
-    print("vk Checking VK credentials...")
+    print("🇷🇺 Checking VK credentials...")
     print("="*60)
     
     vk_token = os.getenv('VK_ACCESS_TOKEN')
+    vk_group_id = os.getenv('VK_GROUP_ID')
     
     # Debug: Show which credentials are set
     print(f"[vk] Access Token: {'✅ Set' if vk_token else '❌ Not set'}")
+    print(f"[vk] Group ID: {'✅ Set' if vk_group_id else '❌ Not set'}")
     
-    if vk_token:
-        print(f"[vk] ✅ Credentials present!")
+    if vk_token and vk_group_id:
+        print(f"[vk] ✅ All credentials present!")
         print(f"[vk] 🚀 Starting upload...")
         try:
             result = upload_to_vk(video_file, description, title)
             results['vk'] = result
+            print(f"\n✅ VK: Upload successful!")
+            print(f"   Post URL: {result.get('post_url', 'N/A')}")
         except Exception as e:
             print(f"\n❌ VK upload FAILED!")
-            print(f"   Error: {str(e)}")
+            print(f"   Error type: {type(e).__name__}")
+            print(f"   Error message: {str(e)}")
             results['vk'] = None
     else:
         print(f"[vk] ⏭️  Skipping VK (credentials not set)")
+        print(f"[vk] Missing credentials - add to GitHub Secrets:")
+        if not vk_token:
+            print(f"   - VK_ACCESS_TOKEN")
+        if not vk_group_id:
+            print(f"   - VK_GROUP_ID")
         results['vk'] = None
 
     # Summary
