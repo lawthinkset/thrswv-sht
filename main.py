@@ -167,14 +167,36 @@ def generate_scene_descriptions(story: str) -> list:
     print(f"[scenes] Created {len(unique_scenes)} unique scenes")
     return unique_scenes
 
+def translate_to_english(russian_text: str) -> str:
+    """Translate Russian text to English using Pollinations AI."""
+    base_url = "https://text.pollinations.ai/"
+    prompt = f"Translate this Russian text to English (only output the translation, nothing else): {russian_text}"
+    url = base_url + quote(prompt)
+    params = {"model": "openai", "temperature": 0.3}
+    
+    try:
+        r = requests.get(url, params=params, timeout=30)
+        r.raise_for_status()
+        translation = r.text.strip()
+        # Remove any quotes or extra text
+        translation = translation.strip('"').strip("'").strip()
+        return translation
+    except Exception as e:
+        print(f"[translate] Warning: Translation failed ({e}), using original text")
+        return russian_text
+
 def generate_image(scene: str, idx: int) -> Path:
     """Generate a unique image for each scene using Pollinations AI with robust retry logic."""
+    # Translate Russian scene to English for better API stability
+    scene_english = translate_to_english(scene)
+    print(f"[image] Translated scene: {scene_english[:80]}...")
+    
     # Create unique seed for each image based on scene content + index
     seed = hash(scene + str(idx)) % 1000000
     
-    # Build detailed, high-quality prompt focusing on beautiful ancient women
+    # Build detailed, high-quality prompt focusing on beautiful ancient women (100% English)
     prompt = (
-        f"stunning beautiful woman in ancient times, {scene}, "
+        f"stunning beautiful woman in ancient times, {scene_english}, "
         f"photorealistic portrait, elegant ancient clothing, "
         f"dramatic cinematic lighting, highly detailed face and eyes, "
         f"historical accuracy, professional photography, "
