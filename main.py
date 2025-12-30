@@ -20,8 +20,8 @@ TEXT_MODEL = "mistral"  # Works great with Russian text
 IMAGE_MODEL = "turbo"  # Affordable and fast (using negative prompts to prevent deformations)
 
 NUM_IMAGES = 8  # 8 unique scenes (faster generation)
-IMAGE_WIDTH = 384   # Correct dimensions for turbo model (prevents double faces!)
-IMAGE_HEIGHT = 682  # Portrait aspect ratio optimized for turbo
+IMAGE_WIDTH = 720   # 720x1280 IS SAFER than 1080p for Turbo (prevents double heads)
+IMAGE_HEIGHT = 1280 # Standard HD Vertical
 
 STORY_MAX_WORDS = 130
 
@@ -263,23 +263,33 @@ def generate_image(scene: str, idx: int) -> Path:
     # Create unique seed for each image based on scene content + index
     seed = hash(scene + str(idx)) % 1000000
     
-    # STUNNING, DETAILED PROMPT for beautiful cinematic images (like flux!)
+    # KEY to Flux-like Realism + CAPTIVATING Style + SAFETY + ANCIENT GOLD AESTHETIC
+    # EXTREME CLOSE UP to prevent double heads (face fills frame)
+    # UPDATED: Focus on STUNNING HAIR + Normal Neck + GLISTENING SKIN (Reference Style)
     prompt = (
-        f"breathtaking portrait of a stunning beautiful woman in ancient times, {scene_english}, "
-        f"exquisite photorealistic masterpiece, elegant flowing ancient clothing with intricate details, "
-        f"ornate jewelry and accessories, dramatic cinematic lighting with golden hour glow, "
-        f"highly detailed face with mesmerizing eyes, flawless skin, "
-        f"historical accuracy, professional photography, volumetric lighting, "
-        f"8k ultra quality, award-winning composition, vibrant rich colors, "
-        f"sharp focus, depth of field, bokeh background, "
-        f"ethereal atmosphere, majestic presence, regal beauty"
+        f"raw analog photo of a captivating beautiful woman in ancient times, {scene_english}, "
+        f"extreme close-up portrait, face filling the frame, single subject, "
+        f"stunning long flowing hair, voluminous curls, intricate braided hairstyle, "
+        f"sharp defined jawline, high cheekbones, sculpted face, "
+        f"adorned in elaborate ancient gold jewelry, gold hair accessories, "
+        f"wearing elegant ancient robes with golden embroidery, detailed clothing texture, "
+        f"hyperrealistic glistening skin, visible sweat on skin, wet skin sheen, visible skin pores, "
+        f"dramatic exposed lighting, chiaroscuro, high contrast, rim lights, "
+        f"shot on 35mm film, fujifilm, glimmering atmosphere, "
+        f"deep expressive eyes, mysterious aura, regal presence, ethereal, "
+        f"8k uhd, unedited, realistic, masterpiece"
     )
     
-    # Strong negative prompts
+    # STRICT SAFETY & QUALITY CONTROL
     negative_prompt = (
-        "two faces, double face, multiple people, duplicate, "
-        "deformed, disfigured, ugly, blurry, bad quality, "
-        "extra face, second face, crowd, bad anatomy"
+        "nipples, areola, nude breasts, exposed breast, topless, naked, nudity, "
+        "nsfw, sexual, explicit, "
+        "long neck, stretched neck, giraffe neck, bad anatomy, "
+        "two heads, two faces, double face, multiple people, duplicate, stacked bodies, "
+        "cartoon, illustration, digital art, drawing, painting, 3d render, cgi, "
+        "smooth skin, plastic skin, airbrushed, photoshop, "
+        "anime, graphic, sketch, artificial, doll, "
+        "deformed, disfigured"
     )
     
     safe_prompt = quote(prompt)
