@@ -96,20 +96,25 @@ def main():
         print("[youtube] ❌ No video found at output/final_video.mp4")
         return
     
-    # Read the story and topic for title
+    # Read the topic for a specific, descriptive title
+    topics_file = Path('topics.txt')
     story_file = Path('output/story.txt')
     topic = ""
     
+    # Try to get the last used topic (it was already removed from topics.txt)
+    # So we'll read it from the story context or use a default
     if story_file.exists():
         story = story_file.read_text(encoding='utf-8')
-        
-        # Extract key phrase from first sentence for title
+        # Extract first meaningful sentence as title
         first_sentence = story.split('.')[0] if '.' in story else story[:80]
-        
-        # Create short, catchy title (max 60 chars for mobile)
+        # Create specific, descriptive title (max 60 chars for mobile)
         title = first_sentence[:57] + "..." if len(first_sentence) > 60 else first_sentence
     else:
         title = "История древних женщин"
+    
+    # Make title more specific and engaging
+    if len(title) < 20:
+        title = f"{title} | Древняя История"
     
     # NO description for Shorts (as requested)
     description = "#Shorts #ИсторияЖенщин #ДревняяИстория"
