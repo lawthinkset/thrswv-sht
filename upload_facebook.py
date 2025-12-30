@@ -9,7 +9,7 @@ import os
 import requests
 from pathlib import Path
 
-def upload_to_facebook(video_path, description):
+def upload_to_facebook(video_path, description, title="История древних женщин"):
     """
     Upload video to Facebook Page.
     
@@ -59,7 +59,7 @@ def upload_to_facebook(video_path, description):
             data = {
                 'access_token': access_token,
                 'description': description[:500],  # Limit description length
-                'title': 'История древних женщин',
+                'title': title[:100],  # Use dynamic title, limit to 100 chars
                 'is_explicit_share': True
             }
             
