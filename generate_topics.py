@@ -1,84 +1,116 @@
-name: Daily Auto Shorts with YouTube Upload
+"""
+Generate new topics using AI when topics.txt runs low.
 
-on:
-  schedule:
-    - cron: "30 15 * * *"     # 9:00 PM India time (3:30 PM UTC)
-  workflow_dispatch:
+This script:
+1. Checks if topics.txt has enough topics (< 50 remaining)
+2. Generates 100 new unique topics using Pollinations AI PAID API
+3. Appends them to topics.txt
+"""
 
-jobs:
-  generate-and-upload:
-    runs-on: ubuntu-latest
+import os
+import requests
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
+TEXT_MODEL = "mistral"  # Works great with Russian text
+
+def generate_new_topics(count=100):
+    """Generate new Russian topics about ancient women using PAID API."""
     
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+    if not POLLINATIONS_API_KEY:
+        raise ValueError("POLLINATIONS_API_KEY not set! Get your API key from https://enter.pollinations.ai")
+    
+    url = "https://gen.pollinations.ai/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = (
+        "Ты историк, специализирующийся на истории женщин в древних цивилизациях. "
+        f"Создай список из {count} уникальных тем на русском языке. "
+        "Каждая тема должна быть короткой (5-10 слов), интересной и образовательной. "
+        "Темы должны охватывать: законы, обычаи, известных женщин, профессии, религию, культуру, искусство. "
+        "Выводи ТОЛЬКО темы, по одной на строку, без номеров и маркеров."
+    )
+    
+    user_prompt = f"Создай {count} уникальных тем о женщинах в древних цивилизациях"
+    
+    payload = {
+        "model": TEXT_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.9,
+        "max_tokens": 2000
+    }
+    
+    print(f"[topics] Generating {count} new topics with {TEXT_MODEL} (PAID API)...")
+    r = requests.post(url, headers=headers, json=payload, timeout=60)
+    r.raise_for_status()
+    
+    response_data = r.json()
+    
+    # Extract text from OpenAI-compatible response
+    if "choices" in response_data and len(response_data["choices"]) > 0:
+        text = response_data["choices"][0]["message"]["content"].strip()
+    else:
+        raise ValueError("Invalid response format from API")
+    
+    # Parse topics
+    topics = []
+    for line in text.strip().split('\n'):
+        # Remove numbering and clean
+        cleaned = line.strip()
+        # Remove common prefixes
+        for prefix in ['- ', '* ', '• ']:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+        # Remove numbering like "1. " or "1) "
+        import re
+        cleaned = re.sub(r'^\d+[\.\:\)]\s*', '', cleaned)
+        
+        if cleaned and len(cleaned) > 5:
+            topics.append(cleaned)
+    
+    print(f"[topics] ✅ Generated {len(topics)} topics")
+    return topics[:count]
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-        cache: 'pip'
+def check_and_update_topics():
+    """Check topics.txt and add more if needed."""
+    
+    topics_file = Path('topics.txt')
+    
+    # Read existing topics
+    if topics_file.exists():
+        with open(topics_file, 'r', encoding='utf-8') as f:
+            existing_topics = [line.strip() for line in f if line.strip()]
+    else:
+        existing_topics = []
+    
+    print(f"[topics] Current topics: {len(existing_topics)}")
+    
+    # Check if we need more topics
+    if len(existing_topics) < 50:
+        print(f"[topics] Low on topics! Generating 100 more...")
+        
+        new_topics = generate_new_topics(100)
+        
+        # Append to file
+        with open(topics_file, 'a', encoding='utf-8') as f:
+            for topic in new_topics:
+                f.write(f"{topic}\n")
+        
+        print(f"[topics] Added {len(new_topics)} new topics!")
+        print(f"[topics] Total topics now: {len(existing_topics) + len(new_topics)}")
+    else:
+        print(f"[topics] Enough topics available ({len(existing_topics)})")
 
-    - name: Install FFmpeg
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y ffmpeg
-
-    - name: Cache Vosk Model
-      uses: actions/cache@v3
-      with:
-        path: vosk-model-small-ru-0.22
-        key: vosk-ru-model-${{ runner.os }}
-
-    - name: Install dependencies
-      run: |
-        pip install --upgrade pip
-        pip install -r requirements.txt
-
-    - name: Check and generate topics if needed
-      env:
-        POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
-      run: |
-        python generate_topics.py
-
-    - name: Generate daily short video
-      env:
-        POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
-      run: |
-        python main.py
-
-    - name: Upload to all platforms
-      env:
-        # YouTube
-        YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
-        YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
-        YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
-        # Instagram (optional)
-        IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-        IG_USER_ID: ${{ secrets.IG_USER_ID }}
-        # TikTok (optional)
-        TIKTOK_ACCESS_TOKEN: ${{ secrets.TIKTOK_ACCESS_TOKEN }}
-        # Facebook (optional)
-        FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-        FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-        # Threads (optional)
-        THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN }}
-        THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
-        # Twitter/X (optional)
-        TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-        TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
-        TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-        TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
-        # VK (optional)
-        VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
-        VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
-      run: |
-        python upload_all_platforms.py
-
-    - name: Upload video artifact (backup)
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: final-video-${{ github.run_number }}
-        path: output/final_video.mp4
-        retention-days: 7
+if __name__ == '__main__':
+    check_and_update_topics()
