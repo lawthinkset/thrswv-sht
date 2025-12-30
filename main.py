@@ -54,10 +54,22 @@ def ensure_dirs():
         f.unlink()
 
 def choose_topic_for_today():
+    """Reads the FIRST topic, removes it from file, and returns it (Queue system)."""
     with open(TOPICS_FILE, "r", encoding="utf-8") as f:
         topics = [line.strip() for line in f if line.strip()]
-    today = datetime.date.today()
-    return topics[today.toordinal() % len(topics)]
+    
+    if not topics:
+        raise ValueError("No topics found in topics.txt! Please run generate_topics.py")
+        
+    # Pick the first one (Queue: FIFO)
+    today_topic = topics[0]
+    
+    # Write back the rest (effectively deleting the first one)
+    with open(TOPICS_FILE, "w", encoding="utf-8") as f:
+        for t in topics[1:]:
+            f.write(t + "\n")
+            
+    return today_topic
 
 def generate_story_with_pollinations(topic: str) -> str:
     """Generate a short Russian story about ancient women's history using PAID API."""
