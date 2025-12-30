@@ -31,19 +31,33 @@ def main():
         print("[upload] ❌ No video found at output/final_video.mp4")
         return
     
-    # Read story for metadata
+    # Read story for dynamic metadata
     story_file = Path('output/story.txt')
     if story_file.exists():
         story = story_file.read_text(encoding='utf-8')
-        # Use first sentence as title
+        
+        # Use first sentence as base title
         title_parts = story.split('.')
-        title = title_parts[0][:100] if title_parts else "История древних женщин"
+        base_title = title_parts[0][:100] if title_parts else "История древних женщин"
+        
+        # Make title more specific and engaging
+        if len(base_title) < 20:
+            title = f"{base_title} | Древняя История"
+        else:
+            title = base_title
+        
+        # Create dynamic description from story
+        # Use first 2-3 sentences for description
+        sentences = [s.strip() for s in story.split('.') if s.strip()]
+        description_text = '. '.join(sentences[:2]) + '.' if len(sentences) >= 2 else story[:200]
+        
+        # Add hashtags
+        description = f"""{description_text}
+
+#Shorts #ИсторияЖенщин #ДревняяИстория #ИсторическиеФакты #ДревнийМир"""
     else:
         title = f"История древних женщин - {datetime.date.today()}"
-    
-    # Russian description
-    # Russian description
-    description = f"""Интересный факт из истории древних женщин.
+        description = f"""Интересный факт из истории древних женщин.
 
 #Shorts #ИсторияЖенщин #ДревняяИстория"""
     
@@ -115,7 +129,7 @@ def main():
         print("📘 Uploading to Facebook...")
         print("="*60)
         try:
-            result = upload_to_facebook(video_file, description)
+            result = upload_to_facebook(video_file, description, title)
             results['facebook'] = result
             print(f"✅ Facebook: Uploaded successfully")
         except Exception as e:
