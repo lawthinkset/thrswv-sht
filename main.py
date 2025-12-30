@@ -7,13 +7,21 @@ from pathlib import Path
 from urllib.parse import quote
 import requests
 import time
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # ---------------- CONFIG ----------------
 
+# Pollinations AI API Configuration (PAID)
+POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
+TEXT_MODEL = "mistral"  # Works great with Russian text
+IMAGE_MODEL = "turbo"  # Affordable and fast (using negative prompts to prevent deformations)
+
 NUM_IMAGES = 8  # 8 unique scenes (faster generation)
-IMAGE_WIDTH = 1080
-IMAGE_HEIGHT = 1920
-IMAGE_MODEL = "flux"
+IMAGE_WIDTH = 384   # Correct dimensions for turbo model (prevents double faces!)
+IMAGE_HEIGHT = 682  # Portrait aspect ratio optimized for turbo
 
 STORY_MAX_WORDS = 130
 
@@ -52,33 +60,60 @@ def choose_topic_for_today():
     return topics[today.toordinal() % len(topics)]
 
 def generate_story_with_pollinations(topic: str) -> str:
-    """Generate a short Russian story about ancient women's history with retry logic."""
-    base_url = "https://text.pollinations.ai/"
-    system = (
+    """Generate a short Russian story about ancient women's history using PAID API."""
+    
+    if not POLLINATIONS_API_KEY:
+        raise ValueError("POLLINATIONS_API_KEY not set! Get your API key from https://enter.pollinations.ai")
+    
+    # Use OpenAI-compatible endpoint for paid API
+    url = "https://gen.pollinations.ai/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = (
         "Ты историк, специализирующийся на истории женщин в древних цивилизациях. "
         "Напиши короткий интересный рассказ на 30 секунд (80-130 слов) на русском языке. "
         "Расскажи о реальных исторических фактах, законах, обычаях или традициях. "
         "Используй живой, увлекательный стиль. Без заголовков."
     )
-    prompt = f"Тема: {topic}. Расскажи интересный исторический факт."
-
-    url = base_url + quote(prompt)
-    params = {"model": "openai", "temperature": 1.0, "system": system}
+    
+    user_prompt = f"Тема: {topic}. Расскажи интересный исторический факт."
+    
+    payload = {
+        "model": TEXT_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 1.0,
+        "max_tokens": 500
+    }
 
     print(f"[story] Generating Russian story for topic: {topic}")
+    print(f"[story] Using model: {TEXT_MODEL} (PAID API)")
     
-    # Retry logic with long delays for server issues
+    # Retry logic - paid API should be more reliable
     max_retries = 3
-    retry_delays = [600, 1200, 1800]  # 10 min, 20 min, 30 min
+    retry_delays = [30, 60, 120]  # 30s, 1min, 2min (much faster than free API)
     
     last_error = None
     
     for attempt in range(max_retries):
         try:
             print(f"[story] Attempt {attempt+1}/{max_retries}...")
-            r = requests.get(url, params=params, timeout=120)
+            r = requests.post(url, headers=headers, json=payload, timeout=60)
             r.raise_for_status()
-            text = r.text.strip()
+            
+            response_data = r.json()
+            
+            # Extract text from OpenAI-compatible response
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                text = response_data["choices"][0]["message"]["content"].strip()
+            else:
+                raise ValueError("Invalid response format from API")
             
             # Validate response
             if not text or len(text) < 50:
@@ -92,14 +127,19 @@ def generate_story_with_pollinations(topic: str) -> str:
                 f.write(text)
 
             print(f"[story] ✅ Russian story generated ({len(text.split())} words)")
+            
+            # Show usage info if available
+            if "usage" in response_data:
+                usage = response_data["usage"]
+                print(f"[story] 📊 Tokens used: {usage.get('total_tokens', 'N/A')}")
+            
             return text
             
         except requests.exceptions.Timeout as e:
             last_error = e
             if attempt < max_retries - 1:
                 wait_time = retry_delays[attempt]
-                print(f"[story] ⏱️ Timeout! Retry {attempt+2}/{max_retries} in {wait_time//60} minutes...")
-                print(f"[story] Waiting {wait_time} seconds...")
+                print(f"[story] ⏱️ Timeout! Retry {attempt+2}/{max_retries} in {wait_time}s...")
                 time.sleep(wait_time)
             else:
                 print(f"[story] ❌ Failed after {max_retries} attempts (timeout)")
@@ -107,19 +147,22 @@ def generate_story_with_pollinations(topic: str) -> str:
         except requests.exceptions.HTTPError as e:
             last_error = e
             status_code = e.response.status_code if e.response else "Unknown"
+            error_body = e.response.text if e.response else "No response body"
+            
             if attempt < max_retries - 1:
                 wait_time = retry_delays[attempt]
-                print(f"[story] ❌ HTTP {status_code} Error! Retry {attempt+2}/{max_retries} in {wait_time//60} minutes...")
-                print(f"[story] Pollinations AI server issue (502/503 errors are common). Waiting...")
+                print(f"[story] ❌ HTTP {status_code} Error! Retry {attempt+2}/{max_retries} in {wait_time}s...")
+                print(f"[story] Error details: {error_body[:200]}")
                 time.sleep(wait_time)
             else:
                 print(f"[story] ❌ Failed after {max_retries} attempts: HTTP {status_code}")
+                print(f"[story] Error: {error_body}")
                 
         except Exception as e:
             last_error = e
             if attempt < max_retries - 1:
                 wait_time = retry_delays[attempt]
-                print(f"[story] ❌ Error: {e}. Retry {attempt+2}/{max_retries} in {wait_time//60} minutes...")
+                print(f"[story] ❌ Error: {e}. Retry {attempt+2}/{max_retries} in {wait_time}s...")
                 time.sleep(wait_time)
             else:
                 print(f"[story] ❌ Failed after {max_retries} attempts: {e}")
@@ -168,25 +211,51 @@ def generate_scene_descriptions(story: str) -> list:
     return unique_scenes
 
 def translate_to_english(russian_text: str) -> str:
-    """Translate Russian text to English using Pollinations AI."""
-    base_url = "https://text.pollinations.ai/"
-    prompt = f"Translate this Russian text to English (only output the translation, nothing else): {russian_text}"
-    url = base_url + quote(prompt)
-    params = {"model": "openai", "temperature": 0.3}
+    """Translate Russian text to English using Pollinations AI PAID API."""
+    
+    if not POLLINATIONS_API_KEY:
+        print("[translate] Warning: No API key, using original text")
+        return russian_text
+    
+    url = "https://gen.pollinations.ai/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": TEXT_MODEL,
+        "messages": [
+            {"role": "user", "content": f"Translate this Russian text to English (only output the translation, nothing else): {russian_text}"}
+        ],
+        "temperature": 0.3,
+        "max_tokens": 300
+    }
     
     try:
-        r = requests.get(url, params=params, timeout=30)
+        r = requests.post(url, headers=headers, json=payload, timeout=30)
         r.raise_for_status()
-        translation = r.text.strip()
-        # Remove any quotes or extra text
-        translation = translation.strip('"').strip("'").strip()
-        return translation
+        
+        response_data = r.json()
+        if "choices" in response_data and len(response_data["choices"]) > 0:
+            translation = response_data["choices"][0]["message"]["content"].strip()
+            # Remove any quotes or extra text
+            translation = translation.strip('"').strip("'").strip()
+            return translation
+        else:
+            raise ValueError("Invalid response format")
+            
     except Exception as e:
         print(f"[translate] Warning: Translation failed ({e}), using original text")
         return russian_text
 
 def generate_image(scene: str, idx: int) -> Path:
-    """Generate a unique image for each scene using Pollinations AI with robust retry logic."""
+    """Generate a unique image for each scene using Pollinations AI PAID API with robust retry logic."""
+    
+    if not POLLINATIONS_API_KEY:
+        raise ValueError("POLLINATIONS_API_KEY not set! Get your API key from https://enter.pollinations.ai")
+    
     # Translate Russian scene to English for better API stability
     scene_english = translate_to_english(scene)
     print(f"[image] Translated scene: {scene_english[:80]}...")
@@ -194,33 +263,50 @@ def generate_image(scene: str, idx: int) -> Path:
     # Create unique seed for each image based on scene content + index
     seed = hash(scene + str(idx)) % 1000000
     
-    # Build detailed, high-quality prompt focusing on beautiful ancient women (100% English)
+    # STUNNING, DETAILED PROMPT for beautiful cinematic images (like flux!)
     prompt = (
-        f"stunning beautiful woman in ancient times, {scene_english}, "
-        f"photorealistic portrait, elegant ancient clothing, "
-        f"dramatic cinematic lighting, highly detailed face and eyes, "
-        f"historical accuracy, professional photography, "
-        f"volumetric lighting, 8k quality, masterpiece, "
-        f"beautiful composition, vibrant colors, sharp focus"
+        f"breathtaking portrait of a stunning beautiful woman in ancient times, {scene_english}, "
+        f"exquisite photorealistic masterpiece, elegant flowing ancient clothing with intricate details, "
+        f"ornate jewelry and accessories, dramatic cinematic lighting with golden hour glow, "
+        f"highly detailed face with mesmerizing eyes, flawless skin, "
+        f"historical accuracy, professional photography, volumetric lighting, "
+        f"8k ultra quality, award-winning composition, vibrant rich colors, "
+        f"sharp focus, depth of field, bokeh background, "
+        f"ethereal atmosphere, majestic presence, regal beauty"
     )
-    safe_prompt = quote(prompt)
     
-    # Include seed to ensure unique image
-    url = (
-        f"https://image.pollinations.ai/prompt/{safe_prompt}"
-        f"?width={IMAGE_WIDTH}&height={IMAGE_HEIGHT}&model={IMAGE_MODEL}&seed={seed}"
+    # Strong negative prompts
+    negative_prompt = (
+        "two faces, double face, multiple people, duplicate, "
+        "deformed, disfigured, ugly, blurry, bad quality, "
+        "extra face, second face, crowd, bad anatomy"
     )
+    
+    safe_prompt = quote(prompt)
+    safe_negative = quote(negative_prompt)
+    
+    # Use paid API endpoint with authentication
+    model_param = f"&model={IMAGE_MODEL}" if IMAGE_MODEL else ""
+    url = (
+        f"https://gen.pollinations.ai/image/{safe_prompt}"
+        f"?width={IMAGE_WIDTH}&height={IMAGE_HEIGHT}{model_param}&seed={seed}"
+        f"&nologo=true&nofeed=true&negative={safe_negative}"
+    )
+    
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}"
+    }
 
     out = IMAGES_DIR / f"scene_{idx:02d}.jpg"
-    print(f"[image] Generating image {idx+1}/{NUM_IMAGES}: {scene[:50]}...")
+    print(f"[image] Generating image {idx+1}/{NUM_IMAGES} with {IMAGE_MODEL} (PAID API): {scene[:50]}...")
     
-    # Enhanced retry logic with longer delays
+    # Enhanced retry logic - paid API should be faster and more reliable
     max_retries = 5
-    retry_delays = [30, 60, 120, 180, 300]  # 30s, 1min, 2min, 3min, 5min
+    retry_delays = [10, 20, 30, 60, 120]  # 10s, 20s, 30s, 1min, 2min (faster than free)
     
     for attempt in range(max_retries):
         try:
-            r = requests.get(url, timeout=180)
+            r = requests.get(url, headers=headers, timeout=120)
             r.raise_for_status()
             
             # Validate image data
@@ -228,43 +314,47 @@ def generate_image(scene: str, idx: int) -> Path:
                 raise ValueError("Image data too small, likely failed generation")
             
             out.write_bytes(r.content)
-            print(f"[image] ✅ Image {idx+1} generated successfully")
-            time.sleep(3)  # Small delay between successful requests
+            print(f"[image] ✅ Image {idx+1} generated successfully ({len(r.content)//1024}KB)")
+            time.sleep(2)  # Small delay between successful requests
             return out
             
         except requests.exceptions.Timeout:
             if attempt < max_retries - 1:
                 wait_time = retry_delays[attempt]
-                print(f"[image] ⏱️ Timeout! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
+                print(f"[image] ⏱️ Timeout! Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
                 time.sleep(wait_time)
             else:
                 print(f"[image] ❌ Failed to generate image {idx+1}: Timeout after {max_retries} attempts")
                 raise
                 
         except requests.exceptions.HTTPError as e:
-            # Handle 429 rate limits with longer waits
-            if e.response.status_code == 429:
+            status_code = e.response.status_code if e.response else "Unknown"
+            error_body = e.response.text if e.response else "No response"
+            
+            # Handle 429 rate limits (shouldn't happen with paid API but just in case)
+            if status_code == 429:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt] * 2  # Double wait time for rate limits
-                    print(f"[image] 🚫 Rate limited! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
-                    print(f"[image] Pollinations AI is busy, please wait...")
+                    print(f"[image] 🚫 Rate limited! Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
                     time.sleep(wait_time)
                 else:
-                    print(f"[image] ❌ Failed to generate image {idx+1}: Rate limit exceeded after {max_retries} attempts")
+                    print(f"[image] ❌ Failed to generate image {idx+1}: Rate limit exceeded")
                     raise
             else:
                 if attempt < max_retries - 1:
                     wait_time = retry_delays[attempt]
-                    print(f"[image] ❌ HTTP {e.response.status_code}! Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
+                    print(f"[image] ❌ HTTP {status_code}! Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
+                    print(f"[image] Error: {error_body[:200]}")
                     time.sleep(wait_time)
                 else:
-                    print(f"[image] ❌ Failed to generate image {idx+1}: {e}")
+                    print(f"[image] ❌ Failed to generate image {idx+1}: HTTP {status_code}")
+                    print(f"[image] Error: {error_body}")
                     raise
                     
         except Exception as e:
             if attempt < max_retries - 1:
                 wait_time = retry_delays[attempt]
-                print(f"[image] ❌ Error: {e}. Retry {attempt+1}/{max_retries} (waiting {wait_time}s)...")
+                print(f"[image] ❌ Error: {e}. Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
                 time.sleep(wait_time)
             else:
                 print(f"[image] ❌ Failed to generate image {idx+1} after {max_retries} attempts: {e}")
