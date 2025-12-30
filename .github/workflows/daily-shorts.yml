@@ -2,7 +2,7 @@ name: Daily Auto Shorts with YouTube Upload
 
 on:
   schedule:
-    - cron: "30 22 * * *"     # 4:00 am India time (3:30 PM UTC)
+    - cron: "30 15 * * *"     # 9:00 PM India time (3:30 PM UTC)
   workflow_dispatch:
 
 jobs:
@@ -36,10 +36,14 @@ jobs:
         pip install -r requirements.txt
 
     - name: Check and generate topics if needed
+      env:
+        POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
       run: |
         python generate_topics.py
 
     - name: Generate daily short video
+      env:
+        POLLINATIONS_API_KEY: ${{ secrets.POLLINATIONS_API_KEY }}
       run: |
         python main.py
 
