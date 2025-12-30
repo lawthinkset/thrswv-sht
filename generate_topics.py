@@ -3,19 +3,35 @@ Generate new topics using AI when topics.txt runs low.
 
 This script:
 1. Checks if topics.txt has enough topics (< 50 remaining)
-2. Generates 100 new unique topics using Pollinations AI
+2. Generates 100 new unique topics using Pollinations AI PAID API
 3. Appends them to topics.txt
 """
 
+import os
 import requests
-from urllib.parse import quote
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
+TEXT_MODEL = "mistral"  # Works great with Russian text
 
 def generate_new_topics(count=100):
-    """Generate new Russian topics about ancient women."""
+    """Generate new Russian topics about ancient women using PAID API."""
     
-    base_url = "https://text.pollinations.ai/"
-    system = (
+    if not POLLINATIONS_API_KEY:
+        raise ValueError("POLLINATIONS_API_KEY not set! Get your API key from https://enter.pollinations.ai")
+    
+    url = "https://gen.pollinations.ai/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = (
         "Ты историк, специализирующийся на истории женщин в древних цивилизациях. "
         f"Создай список из {count} уникальных тем на русском языке. "
         "Каждая тема должна быть короткой (5-10 слов), интересной и образовательной. "
@@ -23,18 +39,33 @@ def generate_new_topics(count=100):
         "Выводи ТОЛЬКО темы, по одной на строку, без номеров и маркеров."
     )
     
-    prompt = f"Создай {count} уникальных тем о женщинах в древних цивилизациях"
+    user_prompt = f"Создай {count} уникальных тем о женщинах в древних цивилизациях"
     
-    url = base_url + quote(prompt)
-    params = {"model": "openai", "temperature": 0.9, "system": system}
+    payload = {
+        "model": TEXT_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.9,
+        "max_tokens": 2000
+    }
     
-    print(f"[topics] Generating {count} new topics...")
-    r = requests.get(url, params=params, timeout=120)
+    print(f"[topics] Generating {count} new topics with {TEXT_MODEL} (PAID API)...")
+    r = requests.post(url, headers=headers, json=payload, timeout=60)
     r.raise_for_status()
+    
+    response_data = r.json()
+    
+    # Extract text from OpenAI-compatible response
+    if "choices" in response_data and len(response_data["choices"]) > 0:
+        text = response_data["choices"][0]["message"]["content"].strip()
+    else:
+        raise ValueError("Invalid response format from API")
     
     # Parse topics
     topics = []
-    for line in r.text.strip().split('\n'):
+    for line in text.strip().split('\n'):
         # Remove numbering and clean
         cleaned = line.strip()
         # Remove common prefixes
@@ -48,6 +79,7 @@ def generate_new_topics(count=100):
         if cleaned and len(cleaned) > 5:
             topics.append(cleaned)
     
+    print(f"[topics] ✅ Generated {len(topics)} topics")
     return topics[:count]
 
 def check_and_update_topics():
