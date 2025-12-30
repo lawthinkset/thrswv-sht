@@ -19,7 +19,7 @@ POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
 TEXT_MODEL = "mistral"  # Works great with Russian text
 IMAGE_MODEL = "turbo"  # Affordable and fast (using negative prompts to prevent deformations)
 
-NUM_IMAGES = 8  # 8 unique scenes (faster generation)
+NUM_IMAGES = 12  # 12 unique scenes for better visual variety
 IMAGE_WIDTH = 720   # 720x1280 IS SAFER than 1080p for Turbo (prevents double heads)
 IMAGE_HEIGHT = 1280 # Standard HD Vertical
 
