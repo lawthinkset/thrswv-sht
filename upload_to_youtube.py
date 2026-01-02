@@ -96,28 +96,41 @@ def main():
         print("[youtube] ❌ No video found at output/final_video.mp4")
         return
     
-    # Read the topic for a specific, descriptive title
-    topics_file = Path('topics.txt')
+    # Read the story for a specific, descriptive title
     story_file = Path('output/story.txt')
-    topic = ""
     
-    # Try to get the last used topic (it was already removed from topics.txt)
-    # So we'll read it from the story context or use a default
+    # Read story with proper UTF-8 encoding
     if story_file.exists():
-        story = story_file.read_text(encoding='utf-8')
+        # Read with UTF-8 encoding and ensure proper decoding
+        with open(story_file, 'r', encoding='utf-8') as f:
+            story = f.read().strip()
+        
         # Extract first meaningful sentence as title
-        first_sentence = story.split('.')[0] if '.' in story else story[:80]
-        # Create specific, descriptive title (max 60 chars for mobile)
-        title = first_sentence[:57] + "..." if len(first_sentence) > 60 else first_sentence
+        sentences = [s.strip() for s in story.split('.') if s.strip()]
+        if sentences:
+            first_sentence = sentences[0]
+            # Create specific, descriptive title (max 60 chars for mobile)
+            title = first_sentence[:57] + "..." if len(first_sentence) > 60 else first_sentence
+        else:
+            title = story[:60] if len(story) > 60 else story
     else:
         title = "История древних женщин"
     
-    # Make title more specific and engaging
+    # Make title more specific and engaging if too short
     if len(title) < 20:
         title = f"{title} | Древняя История"
     
-    # NO description for Shorts (as requested)
-    description = "#Shorts #ИсторияЖенщин #ДревняяИстория"
+    # Create description from first 2-3 sentences
+    if story_file.exists():
+        with open(story_file, 'r', encoding='utf-8') as f:
+            story = f.read().strip()
+        sentences = [s.strip() for s in story.split('.') if s.strip()]
+        description_text = '. '.join(sentences[:2]) + '.' if len(sentences) >= 2 else story[:200]
+        description = f"""{description_text}
+
+#Shorts #ИсторияЖенщин #ДревняяИстория #ИсторическиеФакты #ДревнийМир"""
+    else:
+        description = "#Shorts #ИсторияЖенщин #ДревняяИстория"
     
     tags = [
         'История', 'Древние женщины', 'Исторические факты',
