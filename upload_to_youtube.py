@@ -5,12 +5,19 @@ Uses refresh token from GitHub Secrets to upload videos.
 """
 
 import os
+import sys
 from pathlib import Path
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import datetime
+
+# Configure UTF-8 encoding for console output (fixes Russian text display)
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 def get_authenticated_service():
     """Authenticate using refresh token from environment."""
