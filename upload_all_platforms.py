@@ -38,20 +38,17 @@ def main():
         print("[upload] ❌ No video found at output/final_video.mp4")
         return
     
-    # Read story for dynamic metadata
+    # Read topic for title
+    topic_file = Path('output/topic.txt')
+    if topic_file.exists():
+        title = topic_file.read_text(encoding='utf-8').strip()
+    else:
+        title = "История древних женщин"
+    
+    # Read story for description
     story_file = Path('output/story.txt')
     if story_file.exists():
         story = story_file.read_text(encoding='utf-8')
-        
-        # Use first sentence as base title
-        title_parts = story.split('.')
-        base_title = title_parts[0][:100] if title_parts else "История древних женщин"
-        
-        # Make title more specific and engaging
-        if len(base_title) < 20:
-            title = f"{base_title} | Древняя История"
-        else:
-            title = base_title
         
         # Create dynamic description from story
         # Use first 2-3 sentences for description
@@ -63,7 +60,6 @@ def main():
 
 #Shorts #ИсторияЖенщин #ДревняяИстория #ИсторическиеФакты #ДревнийМир"""
     else:
-        title = f"История древних женщин - {datetime.date.today()}"
         description = f"""Интересный факт из истории древних женщин.
 
 #Shorts #ИсторияЖенщин #ДревняяИстория"""
