@@ -6,8 +6,15 @@ Enhanced with comprehensive debugging and error handling.
 """
 
 import os
+import sys
 import requests
 from pathlib import Path
+
+# Configure UTF-8 encoding for console output (fixes Russian text display)
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 def upload_to_facebook(video_path, description, title="История древних женщин"):
     """
