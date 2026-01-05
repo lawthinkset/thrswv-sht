@@ -47,6 +47,14 @@ jobs:
       run: |
         python main.py
 
+    - name: Commit updated topics file
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add topics.txt
+        git diff --staged --quiet || git commit -m "🔄 Auto-update: Remove used topic from queue [skip ci]"
+        git push
+
     - name: Upload to all platforms
       env:
         # YouTube
