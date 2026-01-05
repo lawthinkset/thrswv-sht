@@ -15,9 +15,16 @@ Free Tier Limits:
 """
 
 import os
+import sys
 from pathlib import Path
 import tweepy
 import time
+
+# Configure UTF-8 encoding for console output (fixes Russian text display)
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 def upload_to_twitter(video_file, caption):
     """Upload video to Twitter/X using API v1.1 (media) + v2 (post)."""
