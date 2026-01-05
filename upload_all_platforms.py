@@ -11,8 +11,15 @@ Each platform requires its own API credentials.
 """
 
 import os
+import sys
 from pathlib import Path
 import datetime
+
+# Configure UTF-8 encoding for console output (fixes Russian text display)
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 # Import platform-specific uploaders
 from upload_to_youtube import upload_to_youtube
