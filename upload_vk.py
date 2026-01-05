@@ -3,12 +3,19 @@ Upload videos to VK (VKontakte) using vk_api library
 This method is MUCH easier and handles OAuth automatically!
 """
 import os
+import sys
 import vk_api
 from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Configure UTF-8 encoding for console output (fixes Russian text display)
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 def upload_to_vk(video_path, description="", title=""):
     """
