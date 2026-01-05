@@ -3,11 +3,18 @@ import re
 import datetime
 import subprocess
 import random
+import sys
 from pathlib import Path
 from urllib.parse import quote
 import requests
 import time
 from dotenv import load_dotenv
+
+# Configure UTF-8 encoding for console output (fixes Russian text display)
+if sys.platform == 'win32':
+    import codecs
+    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
 
 # Load environment variables
 load_dotenv()
@@ -17,13 +24,14 @@ load_dotenv()
 # Pollinations AI API Configuration (PAID)
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
 TEXT_MODEL = "mistral"  # Works great with Russian text
-IMAGE_MODEL = "turbo"  # Affordable and fast (using negative prompts to prevent deformations)
-
+# Image generation settings
+IMAGE_MODEL = "flux"  # Use Flux model for better quality
 NUM_IMAGES = 12  # 12 unique scenes for better visual variety
-IMAGE_WIDTH = 720   # Initial generation at 720x1280 (safer for Turbo model)
-IMAGE_HEIGHT = 1280 # Will be upscaled to 1080x1920 for HD YouTube
-FINAL_WIDTH = 1080  # Final upscaled width for HD YouTube
-FINAL_HEIGHT = 1920 # Final upscaled height for HD YouTube
+# Flux can generate directly at 1080x1920 (no upscaling needed)
+IMAGE_WIDTH = 1080   # Generate directly at final resolution
+IMAGE_HEIGHT = 1920  # Generate directly at final resolution
+FINAL_WIDTH = 1080   # Final width for HD YouTube
+FINAL_HEIGHT = 1920  # Final height for HD YouTube
 
 STORY_MAX_WORDS = 130
 
@@ -202,9 +210,14 @@ def generate_scene_descriptions(story: str) -> list:
     }
     
     system_prompt = (
-        f"You are a world-renowned fashion photographer and beauty director creating a photoshoot of the most EXCEPTIONALLY BEAUTIFUL ancient goddesses. "
+        f"You are a world-renowned fashion photographer and beauty director creating a photoshoot of the most EXCEPTIONALLY BEAUTIFUL ancient women. "
         f"Read the following story and create exactly {NUM_IMAGES} stunning portrait descriptions. "
-        f"Each description MUST capture the MOST BEAUTIFUL, CAPTIVATING, FLAWLESS ancient woman imaginable. "
+        f"CRITICAL: Each portrait MUST be RELEVANT to the story's topic and context, while featuring the MOST BEAUTIFUL ancient woman imaginable. "
+        f"\n\nIMPORTANT - TOPIC RELEVANCE:\n"
+        f"- Each portrait must RELATE to the story's specific topic (e.g., if about inheritance laws, show women in legal/royal settings)\n"
+        f"- Include contextual elements from the story (e.g., scrolls, legal documents, royal courts, specific time period)\n"
+        f"- Show women in roles/situations relevant to the narrative\n"
+        f"- Maintain historical accuracy for the specific topic and era\n"
         f"\n\nFOCUS ON EXCEPTIONAL BEAUTY:\n"
         f"- PERFECT FACIAL FEATURES: Stunning sharp jawline, high cheekbones, symmetrical face, flawless skin\n"
         f"- EXCEPTIONAL HAIR: Luxurious voluminous hair, perfectly styled, elaborate braids, glossy and thick\n"
@@ -216,13 +229,14 @@ def generate_scene_descriptions(story: str) -> list:
         f"- ELABORATE GOLD JEWELRY: Massive necklaces, ornate earrings, jeweled headpieces, arm bands\n"
         f"- LUXURIOUS ANCIENT ATTIRE: Elegant robes with tasteful necklines, golden embroidery, rich fabrics\n"
         f"- DRAMATIC LIGHTING: Golden sunlight, warm amber tones, chiaroscuro, rim lighting\n"
-        f"- ANCIENT ATMOSPHERE: Palace backgrounds, marble columns, golden ambiance, ethereal setting\n"
+        f"- TOPIC-RELEVANT BACKGROUND: Settings that match the story (palace, temple, court, library, etc.)\n"
+        f"- CONTEXTUAL PROPS: Objects relevant to the story (scrolls, tablets, jewelry, ceremonial items)\n"
         f"\n\nEXAMPLES OF PERFECT DESCRIPTIONS:\n"
-        f"'Breathtaking goddess with piercing emerald eyes and stunning sharp jawline, luxurious cascading hair adorned with gold, massive ornate necklace, golden palace sunlight'\n"
-        f"'Exceptionally beautiful woman with perfect symmetrical face, voluminous glossy braided hair with jewels, alluring mysterious smile, elaborate gold jewelry, dramatic lighting'\n"
-        f"'Mesmerizing ancient beauty with flawless porcelain skin, thick flowing silky hair, captivating intense gaze, ornate gold headpiece, regal powerful presence'\n"
+        f"'Breathtaking ancient Greek woman with piercing emerald eyes and stunning sharp jawline, holding a legal scroll in a marble courthouse, luxurious cascading hair adorned with gold, massive ornate necklace, golden sunlight'\n"
+        f"'Exceptionally beautiful Egyptian woman with perfect symmetrical face, voluminous glossy braided hair with jewels, standing in royal library with ancient texts, alluring mysterious smile, elaborate gold jewelry, dramatic lighting'\n"
+        f"'Mesmerizing ancient beauty with flawless porcelain skin, thick flowing silky hair, in temple setting with ceremonial objects, captivating intense gaze, ornate gold headpiece, regal powerful presence'\n"
         f"\n\nReturn ONLY the portrait descriptions, numbered 1 to {NUM_IMAGES}, one per line. "
-        f"Make each portrait VISUALLY STUNNING, EXCEPTIONALLY BEAUTIFUL, and UNFORGETTABLE."
+        f"Make each portrait VISUALLY STUNNING, EXCEPTIONALLY BEAUTIFUL, TOPIC-RELEVANT, and UNFORGETTABLE."
     )
     
     user_prompt = f"Story:\n{story}\n\nGenerate {NUM_IMAGES} detailed visual scene descriptions:"
@@ -439,22 +453,24 @@ def generate_image(scene: str, idx: int) -> Path:
         "hair covering face, hair in eyes, hair obscuring features, "
         "poorly drawn hair, deformed hair, missing hair, "
         
-        # CRITICAL: Prevent FACIAL deformities (quality control)
-        "blurry eyes, crossed eyes, asymmetric eyes, closed eyes, lazy eye, wall-eyed, "
-        "different sized eyes, uneven eyes, misaligned eyes, "
-        "deformed face, disfigured face, ugly face, distorted face, malformed face, "
-        "asymmetric face, crooked face, lopsided face, uneven features, "
-        "bad jawline, weak chin, double chin, undefined jawline, "
-        "bad teeth, crooked teeth, missing teeth, ugly smile, "
-        "bad nose, crooked nose, large nose, deformed nose, "
+        # CRITICAL: Prevent ALL FACIAL deformities
+        "deformed face, disfigured face, ugly face, distorted face, malformed face, mutated face, "
+        "asymmetric face, crooked face, lopsided face, uneven features, warped face, twisted face, "
+        "blurry face, blurred face, out of focus face, soft focus face, bad face, "
+        "blurry eyes, crossed eyes, asymmetric eyes, closed eyes, lazy eye, wall-eyed, wonky eyes, "
+        "different sized eyes, uneven eyes, misaligned eyes, deformed eyes, mutated eyes, "
+        "bad jawline, weak chin, double chin, undefined jawline, crooked jaw, deformed jaw, "
+        "bad teeth, crooked teeth, missing teeth, ugly smile, deformed mouth, twisted mouth, "
+        "bad nose, crooked nose, large nose, deformed nose, asymmetric nose, broken nose, "
         
-        # Prevent body deformities
-        "bad anatomy, wrong anatomy, extra limbs, missing limbs, fused fingers, "
-        "extra fingers, mutated hands, poorly drawn hands, deformed hands, "
-        "mutation, deformed, bad proportions, gross proportions, "
-        "long neck, giraffe neck, stretched neck, elongated neck, thin neck, "
-        "two heads, multiple heads, double face, duplicate face, conjoined, "
-        "multiple people, crowd, group, two women, three women, "
+        # CRITICAL: Prevent ALL body/anatomy deformities
+        "bad anatomy, wrong anatomy, extra limbs, missing limbs, fused fingers, too many fingers, "
+        "extra fingers, missing fingers, mutated hands, poorly drawn hands, deformed hands, "
+        "mutation, deformed, mutated, disfigured, bad proportions, gross proportions, wrong proportions, "
+        "long neck, giraffe neck, stretched neck, elongated neck, thin neck, no neck, "
+        "two heads, multiple heads, double face, duplicate face, conjoined, cloned face, "
+        "multiple people, crowd, group, two women, three women, extra person, "
+        "extra arms, extra legs, missing arms, missing legs, deformed body, mutated body, "
         
         # Prevent bad styles (maintain realism)
         "cartoon, anime, manga, illustration, drawing, painting, sketch, "
@@ -468,12 +484,15 @@ def generate_image(scene: str, idx: int) -> Path:
         "back view, rear view, side profile only, looking away, "
         "looking down, looking up, eyes closed, "
         
-        # Prevent low quality
+        # Prevent low quality and artifacts
         "low quality, low resolution, pixelated, grainy, noisy, blurry, blurry face, "
         "watermark, text, logo, signature, username, caption, "
         "jpeg artifacts, compression artifacts, distorted, "
         "out of focus, soft focus, motion blur, "
-        "amateur, unprofessional, poor lighting, bad lighting"
+        "amateur, unprofessional, poor lighting, bad lighting, "
+        "worst quality, normal quality, low res, error, cropped, lowres, bad quality, "
+        "ugly, duplicate, morbid, mutilated, poorly drawn, "
+        "dehydrated, malformed limbs, cloned face"
     )
     
     safe_prompt = quote(prompt)
@@ -578,19 +597,16 @@ def upscale_image(image_path: Path) -> Path:
     return image_path
 
 def generate_images(scenes: list):
-    """Generate unique images for each scene SEQUENTIALLY, then upscale to HD (1080x1920)"""
-    print(f"[image] Generating {NUM_IMAGES} images sequentially (avoiding rate limits)...")
+    """Generate unique images for each scene at full 1080x1920 resolution (no upscaling needed with Flux)"""
+    print(f"[image] Generating {NUM_IMAGES} images at {IMAGE_WIDTH}x{IMAGE_HEIGHT} with Flux...")
     
     images = []
     for i, scene in enumerate(scenes):
-        # Generate image at 720x1280
+        # Generate image directly at 1080x1920 with Flux
         img_path = generate_image(scene, i)
-        
-        # Upscale to 1080x1920 for HD YouTube quality
-        upscaled_path = upscale_image(img_path)
-        images.append(upscaled_path)
+        images.append(img_path)
     
-    print(f"[image] ✅ All {NUM_IMAGES} images generated and upscaled to {FINAL_WIDTH}x{FINAL_HEIGHT}!")
+    print(f"[image] ✅ All {NUM_IMAGES} images generated at {IMAGE_WIDTH}x{IMAGE_HEIGHT}!")
     return images
 
 def generate_tts(story: str):
