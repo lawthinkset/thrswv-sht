@@ -16,12 +16,12 @@ load_dotenv()
 
 # Pollinations AI API Configuration (PAID)
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
-TEXT_MODEL = "mistral"  # Works great with Russian text
-IMAGE_MODEL = "turbo"  # Affordable and fast (using negative prompts to prevent deformations)
+TEXT_MODEL = "gemini-fast"  # Google Gemini 2.5 Flash Lite
+IMAGE_MODEL = "flux"  # Flux (high quality, photorealistic)
 
 NUM_IMAGES = 8  # 8 unique scenes (faster generation)
-IMAGE_WIDTH = 384   # Correct dimensions for turbo model (prevents double faces!)
-IMAGE_HEIGHT = 682  # Portrait aspect ratio optimized for turbo
+IMAGE_WIDTH = 1080  # Full HD width
+IMAGE_HEIGHT = 1920 # Full HD height (9:16)
 
 STORY_MAX_WORDS = 130
 
@@ -245,22 +245,35 @@ def translate_to_english(russian_text: str) -> str:
         "max_tokens": 300
     }
     
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
-        r.raise_for_status()
-        
-        response_data = r.json()
-        if "choices" in response_data and len(response_data["choices"]) > 0:
-            translation = response_data["choices"][0]["message"]["content"].strip()
-            # Remove any quotes or extra text
-            translation = translation.strip('"').strip("'").strip()
-            return translation
-        else:
-            raise ValueError("Invalid response format")
+    # Retry mechanism for translation
+    for attempt in range(3):
+        try:
+            # Add Connection: close to prevent hangs
+            headers["Connection"] = "close"
             
-    except Exception as e:
-        print(f"[translate] Warning: Translation failed ({e}), using original text")
-        return russian_text
+            if attempt == 0:
+                print(f"[translate] Translating text...")
+                
+            r = requests.post(url, headers=headers, json=payload, timeout=10)
+            r.raise_for_status()
+            
+            response_data = r.json()
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                translation = response_data["choices"][0]["message"]["content"].strip()
+                # Remove any quotes or extra text
+                translation = translation.strip('"').strip("'").strip()
+                print(f"[translate] ✅ Translation success")
+                return translation
+            else:
+                raise ValueError("Invalid response format")
+                
+        except Exception as e:
+            print(f"[translate] ⚠️ Attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(1)
+                continue
+            print(f"[translate] ❌ Translation failed after 3 attempts, using original text.")
+            return russian_text
 
 def generate_image(scene: str, idx: int) -> Path:
     """Generate a unique image for each scene using Pollinations AI PAID API with robust retry logic."""
@@ -277,100 +290,122 @@ def generate_image(scene: str, idx: int) -> Path:
     
     # STUNNING, DETAILED PROMPT for beautiful cinematic images (like flux!)
     prompt = (
-        f"breathtaking portrait of a stunning beautiful woman in ancient times, {scene_english}, "
+        f"hyper-realistic portrait of an exceptionally beautiful woman in ancient times, {scene_english}, "
+        f"face and skin detailed texture, visible pores, natural lighting, "
         f"exquisite photorealistic masterpiece, elegant flowing ancient clothing with intricate details, "
         f"ornate jewelry and accessories, dramatic cinematic lighting with golden hour glow, "
         f"highly detailed face with mesmerizing eyes, flawless skin, "
-        f"historical accuracy, professional photography, volumetric lighting, "
+        f"historical accuracy, professional photography, shot on 35mm, volumetric lighting, "
         f"8k ultra quality, award-winning composition, vibrant rich colors, "
         f"sharp focus, depth of field, bokeh background, "
-        f"ethereal atmosphere, majestic presence, regal beauty"
+        f"ethereal atmosphere, majestic presence, regal beauty, RAW photo"
     )
     
     # Strong negative prompts
     negative_prompt = (
         "two faces, double face, multiple people, duplicate, "
         "deformed, disfigured, ugly, blurry, bad quality, "
-        "extra face, second face, crowd, bad anatomy"
+        "extra face, second face, crowd, bad anatomy, cartoon, drawing, painting, illustration"
     )
     
     safe_prompt = quote(prompt)
     safe_negative = quote(negative_prompt)
     
     # Use paid API endpoint with authentication
-    model_param = f"&model={IMAGE_MODEL}" if IMAGE_MODEL else ""
-    url = (
-        f"https://gen.pollinations.ai/image/{safe_prompt}"
-        f"?width={IMAGE_WIDTH}&height={IMAGE_HEIGHT}{model_param}&seed={seed}"
-        f"&nologo=true&nofeed=true&negative={safe_negative}"
-    )
-    
-    headers = {
-        "Authorization": f"Bearer {POLLINATIONS_API_KEY}"
-    }
-
     out = IMAGES_DIR / f"scene_{idx:02d}.jpg"
     print(f"[image] Generating image {idx+1}/{NUM_IMAGES} with {IMAGE_MODEL} (PAID API): {scene[:50]}...")
     
-    # Enhanced retry logic - paid API should be faster and more reliable
-    max_retries = 5
-    retry_delays = [10, 20, 30, 60, 120]  # 10s, 20s, 30s, 1min, 2min (faster than free)
+    # Enhanced retry logic with model switching strategy
+    # Try preferred model (flux) multiple times, then fallback to turbo
+    model_schedule = ["flux", "flux", "flux", "turbo"]
+    max_retries = len(model_schedule)
+    
+    # Base deterministic seed
+    base_seed = hash(scene + str(idx)) % 1000000
     
     for attempt in range(max_retries):
+        current_model = model_schedule[attempt]
+        
+        # Modify seed on retries to avoid getting stuck on a "bad" seed
+        if attempt == 0:
+            seed = base_seed
+        else:
+            seed = base_seed + random.randint(1, 10000)
+            print(f"[image] 🎲 New seed for retry: {seed}")
+        
+        # Update model in URL
+        model_param = f"&model={current_model}" if current_model else ""
+        
+        # Reconstruct URL
+        url = (
+            f"https://gen.pollinations.ai/image/{safe_prompt}"
+            f"?width={IMAGE_WIDTH}&height={IMAGE_HEIGHT}{model_param}&seed={seed}"
+            f"&nologo=true&nofeed=true&negative={safe_negative}"
+        )
+        
+        # Add Connection: close to prevent stale connection hangs
+        headers = {
+            "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Connection": "close"
+        }
+        
         try:
-            r = requests.get(url, headers=headers, timeout=120)
-            r.raise_for_status()
+            print(f"[image] Attempt {attempt+1}/{max_retries}: Generating HD image with model='{current_model}' (typically 30-60s)...")
             
-            # Validate image data
-            if len(r.content) < 1000:  # Too small to be a valid image
-                raise ValueError("Image data too small, likely failed generation")
+            # Use stream=True to handle large files and track progress
+            with requests.get(url, headers=headers, timeout=120, stream=True) as r:
+                r.raise_for_status()
+                
+                total_size = int(r.headers.get('content-length', 0))
+                downloaded = 0
+                
+                # Write chunks to file with progress indicator
+                with open(out, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192): 
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            percent = (downloaded / total_size) * 100
+                            print(f"\r[image] ⬇️  Downloading... {percent:.1f}% ({downloaded//1024}KB)", end="", flush=True)
+                        else:
+                            print(f"\r[image] ⬇️  Downloading... {downloaded//1024}KB", end="", flush=True)
             
-            out.write_bytes(r.content)
-            print(f"[image] ✅ Image {idx+1} generated successfully ({len(r.content)//1024}KB)")
-            time.sleep(2)  # Small delay between successful requests
+            print() # Newline after progress matched
+            
+            # Validate file size
+            if out.stat().st_size < 1000:
+                raise ValueError("Image file too small")
+            
+            print(f"[image] ✅ Image {idx+1} generated successfully with model='{current_model}' ({out.stat().st_size//1024}KB)")
+            time.sleep(2)
             return out
             
-        except requests.exceptions.Timeout:
-            if attempt < max_retries - 1:
-                wait_time = retry_delays[attempt]
-                print(f"[image] ⏱️ Timeout! Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
-                time.sleep(wait_time)
-            else:
-                print(f"[image] ❌ Failed to generate image {idx+1}: Timeout after {max_retries} attempts")
-                raise
-                
-        except requests.exceptions.HTTPError as e:
-            status_code = e.response.status_code if e.response else "Unknown"
-            error_body = e.response.text if e.response else "No response"
+        except KeyboardInterrupt:
+            print("\n[image] 🛑 Process interrupted by user/system signal during download.")
+            raise
             
-            # Handle 429 rate limits (shouldn't happen with paid API but just in case)
-            if status_code == 429:
-                if attempt < max_retries - 1:
-                    wait_time = retry_delays[attempt] * 2  # Double wait time for rate limits
-                    print(f"[image] 🚫 Rate limited! Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
-                    time.sleep(wait_time)
-                else:
-                    print(f"[image] ❌ Failed to generate image {idx+1}: Rate limit exceeded")
-                    raise
-            else:
-                if attempt < max_retries - 1:
-                    wait_time = retry_delays[attempt]
-                    print(f"[image] ❌ HTTP {status_code}! Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
-                    print(f"[image] Error: {error_body[:200]}")
-                    time.sleep(wait_time)
-                else:
-                    print(f"[image] ❌ Failed to generate image {idx+1}: HTTP {status_code}")
-                    print(f"[image] Error: {error_body}")
-                    raise
-                    
         except Exception as e:
+            print() # Ensure newline
+            # Capture status code if available
+            status_msg = "Error"
+            if isinstance(e, requests.exceptions.HTTPError) and e.response is not None:
+                status_msg = f"HTTP {e.response.status_code}"
+            elif isinstance(e, requests.exceptions.Timeout):
+                status_msg = "Timeout"
+                
+            print(f"[image] ❌ Attempt {attempt+1} failed ({status_msg}): {str(e)[:100]}...")
+            
+            # Clean up partial file
+            if out.exists():
+                out.unlink()
+            
             if attempt < max_retries - 1:
-                wait_time = retry_delays[attempt]
-                print(f"[image] ❌ Error: {e}. Retry {attempt+2}/{max_retries} (waiting {wait_time}s)...")
+                wait_time = 2 if attempt < 2 else 5
+                print(f"[image] 🔄 Retrying in {wait_time}s with model '{model_schedule[attempt+1]}'...")
                 time.sleep(wait_time)
-            else:
-                print(f"[image] ❌ Failed to generate image {idx+1} after {max_retries} attempts: {e}")
-                raise
+    
+    raise Exception(f"Image {idx+1} generation failed after {max_retries} attempts")
     
     raise Exception(f"Image {idx+1} generation failed after all retries")
 
@@ -685,4 +720,11 @@ def main():
     print("=" * 60)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\n🛑 Program stopped by user (KeyboardInterrupt).")
+        try:
+            sys.exit(0)
+        except SystemExit:
+            os._exit(0)
