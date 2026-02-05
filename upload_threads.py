@@ -1,5 +1,5 @@
 """
-Threads Upload - Enhanced Debugging Version
+Threads Upload - Enhanced Version
 Uploads video to tmpfiles.org, then uses URL for Threads API
 """
 
@@ -12,8 +12,42 @@ from pathlib import Path
 # Configure UTF-8 encoding for console output (fixes Russian text display)
 if sys.platform == 'win32':
     import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+    try:
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+    except Exception:
+        pass
+
+def get_threads_credentials():
+    """Smart credential loading"""
+    access_token = os.getenv('THREADS_ACCESS_TOKEN')
+    user_id = os.getenv('THREADS_USER_ID')
+    meta_token = os.getenv('META_USER_ACCESS_TOKEN')
+    
+    # Check if THREADS_ACCESS_TOKEN is a placeholder
+    if access_token and "use your" in access_token:
+        print(f"[threads] ⚠️ THREADS_ACCESS_TOKEN looks like a placeholder.")
+        if meta_token:
+            print(f"[threads] 🔄 key substitution: Using META_USER_ACCESS_TOKEN instead.")
+            access_token = meta_token
+            
+    return access_token, user_id
+
+def get_real_threads_user_id(access_token):
+    """Fetch the authenticated user's Threads ID"""
+    try:
+        url = "https://graph.threads.net/v1.0/me"
+        params = {
+            "fields": "id,username",
+            "access_token": access_token
+        }
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get('id'), data.get('username')
+    except Exception as e:
+        print(f"[threads] ⚠️ Could not auto-detect User ID: {e}")
+    return None, None
 
 def upload_to_threads(video_path, text):
     """
@@ -25,20 +59,32 @@ def upload_to_threads(video_path, text):
     print("=" * 60)
     
     # Get credentials
-    access_token = os.getenv('THREADS_ACCESS_TOKEN')
-    user_id = os.getenv('THREADS_USER_ID')
+    access_token, env_user_id = get_threads_credentials()
     
     if not access_token:
-        error_msg = "❌ THREADS_ACCESS_TOKEN not set"
+        error_msg = "❌ THREADS_ACCESS_TOKEN (or META_USER_ACCESS_TOKEN) not set"
         print(f"[threads] {error_msg}")
         raise ValueError(error_msg)
     
+    # Auto-detect User ID
+    print(f"[threads] 🔍 Validating credentials and fetching User ID...")
+    real_user_id, username = get_real_threads_user_id(access_token)
+    
+    if real_user_id:
+        print(f"[threads] ✅ Authenticated as: @{username} (ID: {real_user_id})")
+        user_id = real_user_id
+        if env_user_id and str(env_user_id) != str(real_user_id):
+            print(f"[threads] ⚠️ Note: Configured THREADS_USER_ID ({env_user_id}) matches different account.")
+            print(f"[threads]    Using authenticated ID: {real_user_id}")
+    else:
+        print(f"[threads] ⚠️ Could not fetch User ID from API. Using configured ID.")
+        user_id = env_user_id
+        
     if not user_id:
-        error_msg = "❌ THREADS_USER_ID not set"
+        error_msg = "❌ THREADS_USER_ID not set and could not be fetched."
         print(f"[threads] {error_msg}")
         raise ValueError(error_msg)
     
-    print(f"[threads] ✅ Credentials loaded")
     print(f"[threads] User ID: {user_id}")
     print(f"[threads] Token length: {len(access_token)} chars")
     
@@ -93,8 +139,9 @@ def upload_to_threads(video_path, text):
         # Step 2: Create Threads container with video URL
         print(f"[threads] 📦 Step 2: Creating Threads container...")
         
-        # Use Instagram Graph API for Threads
-        container_url = f"https://graph.facebook.com/v18.0/{user_id}/threads"
+        # Use Threads API (graph.threads.net)
+        # Endpoint: POST /threads
+        container_url = f"https://graph.threads.net/v1.0/{user_id}/threads"
         container_params = {
             'media_type': 'VIDEO',
             'video_url': video_url,
@@ -124,8 +171,10 @@ def upload_to_threads(video_path, text):
             
             # If this fails, Threads posting is not available for this account
             if 'not authorized' in error_msg.lower() or 'permission' in error_msg.lower():
-                print(f"[threads] ℹ️  Note: Your Instagram account may not be linked to Threads")
-                print(f"[threads] ℹ️  Or Threads API access is not available for your app")
+                print(f"[threads] ℹ️  Possible issues:")
+                print(f"[threads]    - Token missing 'threads_basic' or 'threads_content_publish' scope")
+                print(f"[threads]    - User ID incorrect (we tried {user_id})")
+                print(f"[threads]    - App not Live for Threads API")
             
             raise Exception(f"Threads API Error: {error_msg}")
         
@@ -136,13 +185,13 @@ def upload_to_threads(video_path, text):
         
         # Step 3: Wait for processing
         print(f"[threads] ⏳ Step 3: Waiting for video processing...")
-        max_wait = 120
+        max_wait = 180  # Increased wait time for processing
         waited = 0
         
         while waited < max_wait:
-            status_url = f"https://graph.facebook.com/v18.0/{container_id}"
+            status_url = f"https://graph.threads.net/v1.0/{container_id}"
             status_params = {
-                'fields': 'status',
+                'fields': 'status,error_message',
                 'access_token': access_token
             }
             
@@ -159,6 +208,9 @@ def upload_to_threads(video_path, text):
                 error_msg = status_data.get('error_message', 'Video processing failed')
                 print(f"[threads] ❌ {error_msg}")
                 raise Exception(error_msg)
+            elif status == 'EXPIRED':
+                 print(f"[threads] ❌ Container expired")
+                 raise Exception("Container expired before publishing")
             
             time.sleep(10)
             waited += 10
@@ -170,7 +222,7 @@ def upload_to_threads(video_path, text):
         
         # Step 4: Publish
         print(f"[threads] 📤 Step 4: Publishing to Threads...")
-        publish_url = f"https://graph.facebook.com/v18.0/{user_id}/threads_publish"
+        publish_url = f"https://graph.threads.net/v1.0/{user_id}/threads_publish"
         publish_params = {
             'creation_id': container_id,
             'access_token': access_token
@@ -204,6 +256,13 @@ def upload_to_threads(video_path, text):
         raise
 
 if __name__ == '__main__':
+    # Load dotenv if running directly
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+        
     video_file = Path('output/final_video.mp4')
     if video_file.exists():
         try:
