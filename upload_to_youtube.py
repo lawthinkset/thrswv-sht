@@ -135,7 +135,7 @@ def main():
         description_text = '. '.join(sentences[:2]) + '.' if len(sentences) >= 2 else story[:200]
         description = f"""{description_text}
 
-#Shorts #ИсторияЖенщин #ДревняяИстория #ИсторическиеФакты #ДревнийМир"""
+#shorts #историяженщин #древняяистория #историческиефакты #древниймир"""
     else:
         description = "#Shorts #ИсторияЖенщин #ДревняяИстория"
     
