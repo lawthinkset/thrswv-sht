@@ -61,7 +61,7 @@ def upload_to_instagram(video_path, caption):
         print("[instagram] Step 1: Uploading to GitHub raw URL...")
         import subprocess as _sp, uuid as _uuid, os as _os
         _vid_name = "ig_" + _uuid.uuid4().hex[:8] + ".mp4"
-        _os.system("cp " + str(upload_path) + " " + _vid_name)
+        _os.system("cp " + str(video_path) + " " + _vid_name)
         _os.system("git config --global user.email bot@bot.com")
         _os.system("git config --global user.name Bot")
         _os.system("git add -f " + _vid_name)
@@ -71,7 +71,9 @@ def upload_to_instagram(video_path, caption):
             if _ret == 0:
                 break
             time.sleep(5)
-        video_url = "https://raw.githubusercontent.com/" + thriveruswave + "/" + thriveruswave + "/main/" + _vid_name
+                # Get repo from GitHub environment
+        _repo = os.environ.get('GITHUB_REPOSITORY', 'thriveruswave/thriveruswave')
+        video_url = f"https://raw.githubusercontent.com/{_repo}/main/{_vid_name}"
         print("[instagram] GitHub raw URL: " + video_url)
         
         container_url = f"https://graph.facebook.com/v18.0/{user_id}/media"
@@ -79,7 +81,7 @@ def upload_to_instagram(video_path, caption):
             'media_type': 'REELS',
             'video_url': video_url,
             'caption': caption_limited,
-            'share_to_feed': 'true',
+            'share_to_feed': 'false',
             'access_token': access_token
         }
         
