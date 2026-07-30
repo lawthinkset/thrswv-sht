@@ -134,9 +134,9 @@ def upload_to_all_platforms(video_path, caption, topic, metadata=None):
         return results
         
     platforms = [
+        ("youtube", "yt", "YouTube"),
         ("facebook", "fb", "Facebook"),
         ("instagram", "ig", "Instagram"),
-        ("youtube", "yt", "YouTube"),
         ("vk", "vk", "VK"),
         ("telegram", "tg", "Telegram"),
         ("twitter", "tw", "Twitter"),
@@ -147,17 +147,15 @@ def upload_to_all_platforms(video_path, caption, topic, metadata=None):
     for pname, key, dname in platforms:
         results["platforms_attempted"].append(pname)
         func = uploaders.get(key)
-        if func:
+        if func or pname == "youtube":
             try:
                 t_start = datetime.now()
                 print(f"\n🚀 Uploading to {dname}...")
                 
                 if pname == "youtube":
-                    try:
-                        from upload_to_youtube import upload_to_youtube
-                        r = upload_to_youtube(video_file=video_path, title=topic[:100], description=caption)
-                    except Exception as ye:
-                        r = func(video_path=video_path, title=topic[:100], description=caption)
+                    from upload_to_youtube import upload_to_youtube
+                    tags = ["История", "Древний мир", "Женщины в истории", "History", "Ancient History"]
+                    r = upload_to_youtube(video_file=video_path, title=topic[:100], description=caption, tags=tags)
                 elif pname == "vk":
                     r = func(video_path=video_path, description=caption)
                 elif pname == "telegram":

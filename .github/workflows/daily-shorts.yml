@@ -78,6 +78,7 @@ jobs:
         VK_ACCESS_TOKEN: ${{ secrets.VK_ACCESS_TOKEN }}
         VK_GROUP_ID: ${{ secrets.VK_GROUP_ID }}
       run: |
+        python upload_to_youtube.py
         python upload_all_platforms.py
 
     - name: Commit updated topics and tracking files
