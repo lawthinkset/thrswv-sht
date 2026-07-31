@@ -25,7 +25,7 @@ IMAGE_HEIGHT = 1920 # Full HD height (9:16)
 
 STORY_MAX_WORDS = 130
 
-TOPICS_FILE = "topics.txt"
+TOPICS_FILE = Path("topics.txt")
 
 IMAGES_DIR = Path("images")
 OUTPUT_DIR = Path("output")
@@ -91,7 +91,70 @@ def choose_topic_for_today():
     # Mark as used
     with open(USED_TOPICS_FILE, "a", encoding="utf-8") as f:
         f.write(today_topic + "\n")
-        
+    
+    return today_topic
+    
+
+def generate_story_with_pollinations(topic: str) -> str:
+    """Generate a short Russian story about the topic using Pollinations AI."""
+    if not POLLINATIONS_API_KEY:
+        print("[story] Warning: No API key, using topic as story")
+        return topic
+    
+    url = "https://gen.pollinations.ai/v1/chat/completions"
+    
+    headers = {
+        "Authorization": f"Bearer {POLLINATIONS_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = (
+        "Ты историк и рассказчик. Напиши короткий познавательный рассказ на русском языке "
+        f"(не более {STORY_MAX_WORDS} слов) на тему, подходящий для короткого вертикального видео. "
+        "Выводи только текст рассказа, без заголовков и пояснений."
+    )
+    
+    payload = {
+        "model": TEXT_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": topic}
+        ],
+        "temperature": 0.8,
+        "max_tokens": 500
+    }
+    
+    # Retry mechanism for story generation
+    for attempt in range(3):
+        try:
+            # Add Connection: close to prevent hangs
+            headers["Connection"] = "close"
+            
+            if attempt == 0:
+                print(f"[story] Generating story about: {topic}")
+            
+            r = requests.post(url, headers=headers, json=payload, timeout=30)
+            r.raise_for_status()
+            
+            response_data = r.json()
+            if "choices" in response_data and len(response_data["choices"]) > 0:
+                story = response_data["choices"][0]["message"]["content"].strip()
+                story = story.strip('"').strip("'").strip()
+                print(f"[story] Story generated ({len(story.split())} words)")
+                return story
+            else:
+                raise ValueError("Invalid response format")
+                
+        except Exception as e:
+            print(f"[story] ⚠️ Attempt {attempt+1} failed: {e}")
+            if attempt < 2:
+                time.sleep(2)
+                continue
+            print(f"[story] ❌ Story generation failed after 3 attempts, using topic as story.")
+            return topic
+    
+    return topic
+
 
 def generate_scene_descriptions(story: str) -> list:
     """Extract distinct scene descriptions from the story sentences."""
@@ -132,61 +195,36 @@ def generate_scene_descriptions(story: str) -> list:
     return unique_scenes
 
 def download_image_from_drive(idx: int) -> Path:
-    """Download a random image from Google Drive folder (weighted selection)."""
     import json
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
-    
     out = IMAGES_DIR / f"scene_{idx:02d}.jpg"
-    
     service_key = os.environ.get("GOOGLE_SERVICE_ACCOUNT_KEY")
     folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
-    if not folder_id:
-        raise ValueError("GOOGLE_DRIVE_FOLDER_ID environment variable required")
-    
-    cred = service_account.Credentials.from_service_account_info(
-        json.loads(service_key), scopes=["https://www.googleapis.com/auth/drive.readonly"]
-    )
+    if not folder_id: raise ValueError("GOOGLE_DRIVE_FOLDER_ID required")
+    cred = service_account.Credentials.from_service_account_info(json.loads(service_key), scopes=["https://www.googleapis.com/auth/drive.readonly"])
     service = build("drive", "v3", credentials=cred)
-    
-    all_files = []
-    page_token = None
+    all_files = []; page_token = None
     while True:
-        r = service.files().list(
-            q=f"'{folder_id}' in parents and mimeType contains 'image/'",
-            fields="files(id, name)", pageSize=200, pageToken=page_token
-        ).execute()
-        all_files.extend(r.get("files", []))
-        page_token = r.get("nextPageToken")
-        if not page_token:
-            break
-    
-    used_log = Path("used_images.json")
-    usage = {}
-    if used_log.exists():
-        usage = json.loads(used_log.read_text())
-    
+        r = service.files().list(q=f"'{folder_id}' in parents and mimeType contains 'image/'", fields="files(id, name)", pageSize=200, pageToken=page_token).execute()
+        all_files.extend(r.get("files", [])); page_token = r.get("nextPageToken")
+        if not page_token: break
+    used_log = Path("used_images.json"); usage = {}
+    if used_log.exists(): usage = json.loads(used_log.read_text())
     for f in all_files:
-        if f["name"] not in usage:
-            usage[f["name"]] = 0
-    
-    min_usage = min(usage.values())
-    weights = [1.0 / (usage[f["name"]] - min_usage + 1) for f in all_files]
+        if f["name"] not in usage: usage[f["name"]] = 0
+    min_u = min(usage.values())
+    weights = [1.0 / (usage[f["name"]] - min_u + 1) for f in all_files]
     chosen = random.choices(all_files, weights=weights, k=1)[0]
     usage[chosen["name"]] += 1
     used_log.write_text(json.dumps(usage, indent=2))
-    
     print(f"[image] Downloading {chosen['name']} from Drive...", flush=True)
     request = service.files().get_media(fileId=chosen["id"])
     from googleapiclient.http import MediaIoBaseDownload
-    import io
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    fh.seek(0)
-    out.write_bytes(fh.read())
+    import io; fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request); done = False
+    while not done: _, done = downloader.next_chunk()
+    fh.seek(0); out.write_bytes(fh.read())
     print(f"  Saved: {out.name} ({out.stat().st_size // 1024} KB)", flush=True)
     return out
 
