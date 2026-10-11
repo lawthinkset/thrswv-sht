@@ -153,6 +153,12 @@ def upload_to_all_platforms(video_path, caption, topic, metadata=None):
                 print(f"\n🚀 Uploading to {dname}...")
                 
                 if pname == "youtube":
+                    upload_yt = os.getenv("UPLOAD_YOUTUBE", "true").lower()
+                    if upload_yt in ("false", "0", "no"):
+                        print(f"⏸️ Skipping YouTube upload (UPLOAD_YOUTUBE=false). Other platforms will proceed.")
+                        results["uploads"]["youtube"] = {"status": "skipped", "reason": "UPLOAD_YOUTUBE=false"}
+                        results["platforms_skipped"].append("youtube")
+                        continue
                     from upload_to_youtube import upload_to_youtube
                     tags = ["История", "Древний мир", "Женщины в истории", "History", "Ancient History"]
                     r = upload_to_youtube(video_file=video_path, title=topic[:100], description=caption, tags=tags)
