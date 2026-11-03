@@ -16,7 +16,7 @@ load_dotenv()
 
 # Pollinations AI API Configuration (PAID)
 POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY", "")
-TEXT_MODEL = "gemini-fast"  # Google Gemini 2.5 Flash Lite
+TEXT_MODEL = "openai/gpt-5.4-nano"  # Google Gemini 2.5 Flash Lite
 IMAGE_MODEL = "flux"  # Flux (high quality, photorealistic)
 
 NUM_IMAGES = 8  # 8 unique scenes (faster generation)
